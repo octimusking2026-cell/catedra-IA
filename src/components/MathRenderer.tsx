@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import katex from 'katex';
 
 interface MathRendererProps {
   text: string;
@@ -6,89 +7,151 @@ interface MathRendererProps {
 }
 
 /**
- * Renders mathematical expressions, formatting LaTeX symbols, fractions,
- * matrices, limits, exponents, and vectors with high readability.
+ * Renders mathematical and physics formulas using KaTeX for maximum academic clarity and beauty.
+ * Handles display equations ($$ ... $$, \[ ... \]), inline formulas ($ ... $, \( ... \)),
+ * and pure LaTeX expressions.
  */
 export const MathRenderer: React.FC<MathRendererProps> = ({ text, className = '' }) => {
   if (!text) return null;
 
-  // Split by line to detect equations vs text
-  const lines = text.split('\n');
+  const renderedBlocks = useMemo(() => {
+    // Split text into distinct logical paragraphs or equation blocks
+    const rawLines = text.split('\n');
 
-  return (
-    <div className={`space-y-2 font-mono text-sm leading-relaxed ${className}`}>
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <div key={idx} className="h-1" />;
+    return rawLines.map((line, lineIdx) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return <div key={lineIdx} className="h-2" />;
+      }
 
-        // Detect if line is primarily a formula / equation
-        const isEquation =
-          trimmed.includes('\\') ||
-          trimmed.includes('=') ||
-          trimmed.includes('->') ||
-          trimmed.includes('lim') ||
-          trimmed.includes('pmatrix') ||
-          trimmed.includes('int') ||
-          trimmed.includes('^') ||
-          trimmed.includes('sum');
-
-        // Clean common LaTeX commands into friendly typography
-        const formatted = trimmed
-          .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)')
-          .replace(/\\lim_\{([^}]+)\}/g, 'lim($1)')
-          .replace(/\\lim/g, 'lim')
-          .replace(/\\to/g, ' → ')
-          .replace(/\\xrightarrow\{([^}]+)\}/g, ' ──[$1]──> ')
-          .replace(/\\implies/g, ' ⟹ ')
-          .replace(/\\in/g, ' ∈ ')
-          .replace(/\\cap/g, ' ∩ ')
-          .replace(/\\cup/g, ' ∪ ')
-          .replace(/\\oplus/g, ' ⊕ ')
-          .replace(/\\mathbb\{R\}/g, 'ℝ')
-          .replace(/\\mathbb\{C\}/g, 'ℂ')
-          .replace(/\\mathbb\{N\}/g, 'ℕ')
-          .replace(/\\alpha/g, 'α')
-          .replace(/\\beta/g, 'β')
-          .replace(/\\theta/g, 'θ')
-          .replace(/\\lambda/g, 'λ')
-          .replace(/\\mu/g, 'μ')
-          .replace(/\\Delta/g, 'Δ')
-          .replace(/\\sum/g, '∑')
-          .replace(/\\int/g, '∫')
-          .replace(/\\vec\{([^}]+)\}/g, 'vec($1)')
-          .replace(/\\operatorname\{([^}]+)\}/g, '$1')
-          .replace(/\\dim/g, 'dim')
-          .replace(/\\boxed\{([^}]+)\}/g, '⟦ $1 ⟧')
-          .replace(/\\text\{([^}]+)\}/g, '$1')
-          .replace(/\\left\(/g, '(')
-          .replace(/\\right\)/g, ')')
-          .replace(/\\left\[/g, '[')
-          .replace(/\\right\]/g, ']')
-          .replace(/\\begin\{pmatrix\}/g, '[ ')
-          .replace(/\\end\{pmatrix\}/g, ' ]')
-          .replace(/\\\\/g, ' | ')
-          .replace(/&/g, '  ')
-          .replace(/\\quad/g, '  ');
-
-        if (isEquation) {
+      // Check if line is wrapped in $$ ... $$ or \[ ... \]
+      const displayMatch = trimmed.match(/^(\$\$|\\\[)(.*)(\$\$|\\\])$/s);
+      if (displayMatch) {
+        const mathContent = displayMatch[2].trim();
+        try {
+          const html = katex.renderToString(mathContent, {
+            displayMode: true,
+            throwOnError: false,
+          });
           return (
             <div
-              key={idx}
-              className="p-3 my-1.5 bg-slate-900 text-sky-300 rounded-lg border border-slate-800 overflow-x-auto shadow-inner"
-            >
-              <code className="text-sm font-semibold tracking-wide whitespace-pre-wrap">
-                {formatted}
-              </code>
-            </div>
+              key={lineIdx}
+              className="my-3 py-3 px-4 bg-slate-900/90 text-white rounded-xl overflow-x-auto shadow-sm border border-slate-800 text-center"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          );
+        } catch {
+          return (
+            <pre key={lineIdx} className="p-3 bg-slate-900 text-sky-300 rounded-lg overflow-x-auto font-mono text-sm">
+              {mathContent}
+            </pre>
+          );
+        }
+      }
+
+      // Check if line looks predominantly like a standalone LaTeX equation
+      const isPureLatex =
+        trimmed.startsWith('\\') ||
+        trimmed.includes('\\frac') ||
+        trimmed.includes('\\lim') ||
+        trimmed.includes('\\begin{') ||
+        trimmed.includes('\\xrightarrow') ||
+        trimmed.includes('\\operatorname') ||
+        trimmed.includes('\\sum') ||
+        trimmed.includes('\\int') ||
+        trimmed.includes('\\boxed') ||
+        trimmed.includes('\\mathcal');
+
+      if (isPureLatex && !trimmed.includes(' ') || (isPureLatex && (trimmed.includes('=') || trimmed.includes('\\implies')))) {
+        try {
+          const html = katex.renderToString(trimmed, {
+            displayMode: true,
+            throwOnError: false,
+          });
+          return (
+            <div
+              key={lineIdx}
+              className="my-3 py-3 px-4 bg-slate-900/90 text-white rounded-xl overflow-x-auto shadow-sm border border-slate-800 text-center"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          );
+        } catch {
+          // fall through to mixed parser
+        }
+      }
+
+      // Mixed line with inline formulas ($...$ or \(...\)) or plain text
+      // Tokenize by $...$ or \(...\)
+      const parts: React.ReactNode[] = [];
+      const regex = /(\$([^\$]+)\$|\\\((.*?)\\\))/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = regex.exec(trimmed)) !== null) {
+        const precedingText = trimmed.substring(lastIndex, match.index);
+        if (precedingText) {
+          parts.push(<span key={`${lineIdx}-text-${lastIndex}`}>{precedingText}</span>);
+        }
+
+        const formula = match[2] || match[3] || '';
+        try {
+          const html = katex.renderToString(formula, {
+            displayMode: false,
+            throwOnError: false,
+          });
+          parts.push(
+            <span
+              key={`${lineIdx}-math-${match.index}`}
+              className="px-1 text-blue-700 font-semibold"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          );
+        } catch {
+          parts.push(
+            <code key={`${lineIdx}-math-fallback-${match.index}`} className="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">
+              {formula}
+            </code>
           );
         }
 
-        return (
-          <p key={idx} className="font-sans text-slate-700">
-            {line}
-          </p>
+        lastIndex = regex.lastIndex;
+      }
+
+      if (lastIndex < trimmed.length) {
+        parts.push(
+          <span key={`${lineIdx}-text-tail`}>
+            {trimmed.substring(lastIndex)}
+          </span>
         );
-      })}
-    </div>
-  );
+      }
+
+      // If no $ math tags were found, but the line contains isolated LaTeX tokens like \alpha or \implies,
+      // let's try a safe KaTeX parse if it doesn't look like regular Spanish text
+      if (parts.length === 1 && isPureLatex) {
+        try {
+          const html = katex.renderToString(trimmed, {
+            displayMode: false,
+            throwOnError: false,
+          });
+          return (
+            <div
+              key={lineIdx}
+              className="my-2 p-2.5 bg-slate-900/90 text-white rounded-lg overflow-x-auto text-center"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          );
+        } catch {
+          // keep regular text
+        }
+      }
+
+      return (
+        <p key={lineIdx} className="text-slate-800 leading-relaxed font-sans text-sm">
+          {parts.length > 0 ? parts : trimmed}
+        </p>
+      );
+    });
+  }, [text]);
+
+  return <div className={`space-y-1.5 ${className}`}>{renderedBlocks}</div>;
 };

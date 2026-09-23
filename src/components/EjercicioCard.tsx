@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, ArrowRight, ThumbsUp, ThumbsDown, BookCheck, Clock } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, ArrowRight, ThumbsUp, ThumbsDown, Clock, Sparkles } from 'lucide-react';
 
 interface EjercicioCardProps {
   ejercicio: any;
@@ -43,9 +43,9 @@ export const EjercicioCard: React.FC<EjercicioCardProps> = ({
               </span>
             )
           ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
               <Clock className="w-3 h-3" />
-              Pendiente
+              Sin resolver
             </span>
           )}
         </div>
@@ -82,11 +82,26 @@ export const EjercicioCard: React.FC<EjercicioCardProps> = ({
           )}
         </div>
 
-        {/* Action link */}
-        <div className="flex items-center gap-1 text-blue-600 font-semibold group-hover:translate-x-0.5 transition-transform">
-          <span>{hasResolution ? 'Ver Paso a Paso' : 'Resolver'}</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </div>
+        {/* Action button */}
+        {hasResolution ? (
+          <div className="flex items-center gap-1 text-blue-600 font-semibold group-hover:translate-x-0.5 transition-transform">
+            <span>Ver Paso a Paso</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onSolveNow) onSolveNow(ejercicio);
+              else onSelect(ejercicio.id);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 shadow-xs transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Resolver</span>
+          </button>
+        )}
       </div>
     </div>
   );

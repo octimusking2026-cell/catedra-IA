@@ -47,7 +47,7 @@ export const LimiteConsultas: React.FC<LimiteConsultasProps> = ({
       </h3>
 
       <p className="text-slate-300 text-sm mb-6 max-w-xl leading-relaxed">
-        El plan gratuito te permite resolver hasta <strong>{limite} ejercicios por día</strong>. Con el plan
+        El plan gratuito te permite resolver hasta <strong>{limite} ejercicios por día</strong> (se reinician a las 00:00 hs, horario de Argentina). Con el plan
         <strong> Premium</strong>, accedés a consultas ilimitadas con la metodología de tu cátedra, paso a paso
         profundo y soporte en exámenes.
       </p>
@@ -70,11 +70,11 @@ export const LimiteConsultas: React.FC<LimiteConsultasProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>Todas las cátedras UBA/UTN</span>
+          <span>Cátedras universitarias oficiales</span>
         </div>
         <div className="flex items-center gap-2">
           <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>Pago seguro en Mercado Pago</span>
+          <span>Sin cobro previo (Lista de Espera)</span>
         </div>
       </div>
 
@@ -85,7 +85,7 @@ export const LimiteConsultas: React.FC<LimiteConsultasProps> = ({
           className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition-all"
         >
           <Sparkles className="w-4 h-4" />
-          <span>Obtener Premium con Mercado Pago</span>
+          <span>Unirme a la lista de espera Premium</span>
           <ArrowRight className="w-4 h-4" />
         </button>
 

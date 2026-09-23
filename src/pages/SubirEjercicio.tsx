@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Catedra,
   ConsultasStatus,
@@ -17,6 +17,7 @@ import {
   Loader2,
   RefreshCw,
   Zap,
+  Globe,
 } from 'lucide-react';
 
 interface SubirEjercicioProps {
@@ -42,47 +43,138 @@ export const SubirEjercicio: React.FC<SubirEjercicioProps> = ({
   const [enunciado, setEnunciado] = useState('');
   const [tema, setTema] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadedFileMeta, setUploadedFileMeta] = useState<{
+    name: string;
+    size: string;
+    isPdf: boolean;
+    mimeType: string;
+  } | null>(null);
   const [isExtractingOcr, setIsExtractingOcr] = useState(false);
+  const [ocrWarning, setOcrWarning] = useState<string | null>(null);
   const [isSolving, setIsSolving] = useState(false);
   const [solvingPhase, setSolvingPhase] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [aceptaPublicacion, setAceptaPublicacion] = useState(true);
 
   const activeCatedra = selectedCatedra || catedras[0];
   const isPremium = usuario?.plan === 'premium';
   const remaining = consultas?.restantes ?? 0;
 
-  // Handle image upload from file or camera
+  // Keep topic synced when chair changes
+  useEffect(() => {
+    if (activeCatedra?.temas && activeCatedra.temas.length > 0) {
+      if (!tema || !activeCatedra.temas.includes(tema)) {
+        setTema(activeCatedra.temas[0]);
+      }
+    }
+  }, [activeCatedra]);
+
+  // Handle image or PDF upload from file or camera
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setOcrWarning(null);
+
+    const isPdfFile =
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    if (isPdfFile) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result as string;
+        setImagePreview(base64);
+        setUploadedFileMeta({
+          name: file.name,
+          size: `${(file.size / 1024).toFixed(0)} KB`,
+          isPdf: true,
+          mimeType: 'application/pdf',
+        });
+        triggerOcr(base64, 'application/pdf');
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // If image: normalize through canvas to guarantee a standard JPEG with white background and capped dimensions (max 1600px)
     const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
-      setImagePreview(base64);
-      triggerOcr(base64);
+    reader.onload = () => {
+      const rawDataUrl = reader.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIM = 1600;
+        let { width, height } = img;
+        if (width > MAX_DIM || height > MAX_DIM) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          } else {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          const normalizedJpeg = canvas.toDataURL('image/jpeg', 0.9);
+          setImagePreview(normalizedJpeg);
+          setUploadedFileMeta({
+            name: file.name,
+            size: `${(file.size / 1024).toFixed(0)} KB`,
+            isPdf: false,
+            mimeType: 'image/jpeg',
+          });
+          triggerOcr(normalizedJpeg, 'image/jpeg');
+        } else {
+          setImagePreview(rawDataUrl);
+          setUploadedFileMeta({
+            name: file.name,
+            size: `${(file.size / 1024).toFixed(0)} KB`,
+            isPdf: false,
+            mimeType: file.type || 'image/jpeg',
+          });
+          triggerOcr(rawDataUrl, file.type || 'image/jpeg');
+        }
+      };
+      img.onerror = () => {
+        setImagePreview(rawDataUrl);
+        setUploadedFileMeta({
+          name: file.name,
+          size: `${(file.size / 1024).toFixed(0)} KB`,
+          isPdf: false,
+          mimeType: file.type || 'image/jpeg',
+        });
+        triggerOcr(rawDataUrl, file.type || 'image/jpeg');
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   };
 
   // Trigger OCR with Gemini
-  const triggerOcr = async (base64Img: string) => {
+  const triggerOcr = async (base64Img: string, mimeType?: string) => {
     setIsExtractingOcr(true);
     setErrorMsg(null);
+    setOcrWarning(null);
     try {
-      const res = await api.extraerTextoOCR(base64Img);
+      const res = await api.extraerTextoOCR(base64Img, mimeType);
       if (res.texto_ocr) {
         setEnunciado(res.texto_ocr);
         if (!titulo) {
           setTitulo(`Ejercicio de ${activeCatedra.nombre}`);
         }
+      } else if (res.advertencia) {
+        setOcrWarning(res.advertencia);
       }
     } catch (err: any) {
-      console.warn('OCR fallback warning:', err);
-      // Fallback message if OCR fails or is empty
-      if (!enunciado) {
-        setEnunciado('Transcribí aquí el enunciado del ejercicio de tu cátedra...');
-      }
+      console.warn('OCR processing notice:', err);
+      setOcrWarning('No se pudo extraer el texto automáticamente. Podés transcribir el enunciado en el cuadro de texto.');
     } finally {
       setIsExtractingOcr(false);
     }
@@ -108,6 +200,11 @@ export const SubirEjercicio: React.FC<SubirEjercicioProps> = ({
       return;
     }
 
+    if (!aceptaPublicacion) {
+      setErrorMsg('Debés aceptar el aviso de publicación abierta para poder compartir y resolver el ejercicio en la cátedra.');
+      return;
+    }
+
     // Check Freemium quota
     if (!isPremium && remaining === 0) {
       onOpenUpgradeModal();
@@ -128,11 +225,18 @@ export const SubirEjercicio: React.FC<SubirEjercicioProps> = ({
     }, 2500);
 
     try {
+      const activeTema = (tema || activeCatedra.temas[0] || 'General').trim();
+      const detectedMime =
+        uploadedFileMeta?.mimeType ||
+        (imagePreview?.startsWith('data:application/pdf') ? 'application/pdf' : 'image/jpeg');
+
       const res = await api.generarResolucion({
         catedra_id: activeCatedra.id,
         titulo: titulo.trim() || `Ejercicio de ${activeCatedra.nombre}`,
         enunciado: enunciado.trim(),
+        tema: activeTema,
         imagen_base64: imagePreview || undefined,
+        mime_type: detectedMime,
       });
 
       clearTimeout(t1);
@@ -206,23 +310,44 @@ export const SubirEjercicio: React.FC<SubirEjercicioProps> = ({
             <div className="relative border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-6 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col items-center justify-center min-h-[220px]">
               {imagePreview ? (
                 <div className="space-y-3 w-full">
-                  <img
-                    src={imagePreview}
-                    alt="Preview del ejercicio"
-                    className="max-h-48 mx-auto rounded-lg object-contain shadow-xs border border-slate-200"
-                  />
+                  {uploadedFileMeta?.isPdf || imagePreview.startsWith('data:application/pdf') ? (
+                    <div className="p-4 bg-red-50/90 border border-red-200 rounded-xl flex items-center gap-3 text-left shadow-xs">
+                      <div className="w-12 h-12 rounded-lg bg-red-600 text-white flex flex-col items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                        <FileText className="w-5 h-5" />
+                        <span className="text-[9px] uppercase tracking-wider">PDF</span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {uploadedFileMeta?.name || 'Documento PDF'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          {uploadedFileMeta?.size || 'Archivo adjunto'}
+                        </p>
+                        <span className="inline-block text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-semibold mt-1">
+                          Listo para procesar con IA
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <img
+                      src={imagePreview}
+                      alt="Preview del ejercicio"
+                      className="max-h-48 mx-auto rounded-lg object-contain shadow-xs border border-slate-200"
+                    />
+                  )}
                   <div className="flex items-center justify-center gap-2">
                     <label
                       htmlFor="file-upload"
                       className="text-xs text-blue-600 font-semibold cursor-pointer hover:underline"
                     >
-                      Cambiar foto
+                      {uploadedFileMeta?.isPdf ? 'Cambiar PDF' : 'Cambiar archivo'}
                     </label>
                     <span className="text-slate-300">·</span>
                     <button
                       type="button"
                       onClick={() => {
                         setImagePreview(null);
+                        setUploadedFileMeta(null);
                       }}
                       className="text-xs text-rose-500 hover:underline"
                     >
@@ -266,14 +391,26 @@ export const SubirEjercicio: React.FC<SubirEjercicioProps> = ({
                 <span>Extrayendo enunciado con OCR de IA...</span>
               </div>
             )}
+
+            {ocrWarning && (
+              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>{ocrWarning}</span>
+              </div>
+            )}
           </div>
 
           {/* Right: Cátedra selector and Methodological alert */}
           <div className="lg:col-span-2 space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
-                2. Cátedra Universitaria
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  2. Cátedra Universitaria
+                </label>
+                <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  Cátedras de ejemplo inicial
+                </span>
+              </div>
               <select
                 value={activeCatedra.id}
                 onChange={(e) => {
@@ -362,6 +499,38 @@ export const SubirEjercicio: React.FC<SubirEjercicioProps> = ({
             onChange={(e) => setEnunciado(e.target.value)}
             className="w-full bg-white border border-slate-300 rounded-xl p-4 text-xs sm:text-sm font-mono text-slate-800 leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-xs"
           />
+        </div>
+
+        {/* Public Repository Notice */}
+        <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0 mt-0.5">
+              <Globe className="w-5 h-5 text-amber-700" />
+            </div>
+            <div className="space-y-1 text-xs text-amber-900 leading-relaxed">
+              <p className="font-bold text-amber-950 text-xs sm:text-sm">
+                Aviso de Publicación Abierta Comunitaria
+              </p>
+              <p>
+                Los ejercicios subidos y sus resoluciones paso a paso se incorporan de forma pública al banco de la cátedra para que tus compañeros puedan estudiar y contrastar métodos.
+              </p>
+              <p className="text-amber-800 text-[11px]">
+                Por favor <strong>no subas datos personales, nombres propios, firmas ni exámenes individuales en curso</strong> cuya difusión esté prohibida por el reglamento de tu facultad.
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-start gap-2.5 pt-2 border-t border-amber-200/70 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={aceptaPublicacion}
+              onChange={(e) => setAceptaPublicacion(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-amber-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-xs font-semibold text-amber-950">
+              Entiendo y acepto que este ejercicio y su resolución serán públicos en la comunidad académica de esta cátedra.
+            </span>
+          </label>
         </div>
 
         {/* Error message */}

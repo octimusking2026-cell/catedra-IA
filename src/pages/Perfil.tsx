@@ -68,38 +68,38 @@ export const Perfil: React.FC<PerfilProps> = ({
                 Registrado en marzo 2026
               </span>
               <span className="flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                Cuenta Verificada
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                Estudiante activo
               </span>
             </div>
           </div>
         </div>
 
-        {/* Quick User Switcher for tester */}
+        {/* Quick Quota Switcher for tester */}
         <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-center sm:text-right space-y-2 w-full sm:w-auto">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-            Cambiar usuario demo:
+            Probar cuota en este navegador:
           </span>
           <div className="flex items-center justify-center sm:justify-end gap-1.5">
             <button
               onClick={() => onSwitchUser('usr_free_demo')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                usuario?.id === 'usr_free_demo'
+                !isPremium
                   ? 'bg-blue-600 text-white'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
               }`}
             >
-              Agustín (Free)
+              Modo Free (3 consultas)
             </button>
             <button
               onClick={() => onSwitchUser('usr_premium_demo')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                usuario?.id === 'usr_premium_demo'
+                isPremium
                   ? 'bg-amber-600 text-white'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
               }`}
             >
-              Lucía (Premium)
+              Modo Premium (Ilimitado)
             </button>
           </div>
         </div>
@@ -117,7 +117,7 @@ export const Perfil: React.FC<PerfilProps> = ({
               Ilimitadas
             </span>
           ) : (
-            <span className="text-xs text-slate-400">Se reinician a las 00:00 hs</span>
+            <span className="text-xs text-slate-400">Reinicio: 00:00 hs (hora de Argentina)</span>
           )}
         </div>
 
@@ -135,7 +135,7 @@ export const Perfil: React.FC<PerfilProps> = ({
             <p className="text-xs text-slate-300 mt-1 max-w-md">
               {isPremium
                 ? 'Tenés acceso irrestricto para resolver todos los ejercicios que necesites para tus parciales.'
-                : `Has usado ${used} de tus ${limit} consultas gratuitas de hoy.`}
+                : `Has usado ${used} de tus ${limit} consultas gratuitas de hoy (zona horaria de Argentina).`}
             </p>
           </div>
 
@@ -145,7 +145,7 @@ export const Perfil: React.FC<PerfilProps> = ({
               className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-md shadow-blue-600/30 flex items-center justify-center gap-2 transition-colors shrink-0"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Pasar a Premium</span>
+              <span>Lista de Espera Premium</span>
             </button>
           )}
         </div>

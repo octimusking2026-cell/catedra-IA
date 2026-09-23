@@ -48,9 +48,15 @@ export default function App() {
       setCatedras(cats);
       setEjercicios(ejs);
 
-      if (facs.length > 0) setSelectedFacultad(facs[0]);
-      if (mats.length > 0) setSelectedMateria(mats[0]);
-      if (cats.length > 0) setSelectedCatedra(cats[0]);
+      if (facs.length > 0) {
+        setSelectedFacultad(facs[0]);
+        const firstMat = mats.find((m) => m.facultad_id === facs[0].id) || mats[0];
+        if (firstMat) {
+          setSelectedMateria(firstMat);
+          const firstCat = cats.find((c) => c.materia_id === firstMat.id) || cats[0];
+          if (firstCat) setSelectedCatedra(firstCat);
+        }
+      }
     } catch (err) {
       console.error('Error cargando datos iniciales:', err);
     } finally {

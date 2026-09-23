@@ -33,6 +33,7 @@ export interface Catedra {
   criterios_clave: string[];
   temas: string[];
   consejos_examen?: string[];
+  es_ejemplo?: boolean;
 }
 
 export interface Ejercicio {
@@ -99,4 +100,26 @@ export interface EjercicioConDetalle extends Ejercicio {
   catedra?: Catedra;
   materia?: Materia;
   facultad?: Facultad;
+  mi_voto?: {
+    tipo: 'positivo' | 'negativo';
+    comentario?: string;
+  };
+}
+
+export interface VotoDetalle {
+  anon_user_id: string;
+  resolucion_id: string;
+  tipo: 'positivo' | 'negativo';
+  comentario?: string;
+  fecha: string;
+}
+
+export interface ListaEsperaEntry {
+  id: string;
+  email: string;
+  plan_interes: 'mensual' | 'cuatrimestral' | 'anual';
+  catedra_id?: string;
+  catedra_nombre?: string;
+  anon_user_id: string;
+  fecha: string;
 }

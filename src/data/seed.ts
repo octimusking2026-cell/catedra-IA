@@ -98,9 +98,10 @@ export const SEED_CATEDRAS: Catedra[] = [
   {
     id: 'cat_am_gutierrez',
     materia_id: 'mat_am1_cbc',
-    nombre: 'Cátedra Gutiérrez',
+    nombre: 'Cátedra Gutiérrez (Ejemplo)',
     profesor: 'Prof. Titular Dr. Carlos Gutiérrez (Sede Puan / Montes de Oca)',
     cuatrimestre: '1C / 2C Anual',
+    es_ejemplo: true,
     estilo_metodologico: 'Enfoque riguroso en infinitésimos y desarrollos de Taylor. No se permite L\'Hôpital ciego sin justificar la indeterminación 0/0 o inf/inf y comparar con Taylor de orden 2. En estudio de funciones, es obligatorio el cuadro completo de signos de f\'(x) y f\'\'(x) justificando con el Teorema del Valor Medio.',
     criterios_clave: [
       'Prohibido aplicar L\'Hôpital en límites con cocientes polinómicos o exponenciales sin justificar exhaustivamente; priorizar Polinomio de Taylor.',
@@ -123,9 +124,10 @@ export const SEED_CATEDRAS: Catedra[] = [
   {
     id: 'cat_alg_martinez',
     materia_id: 'mat_alg_cbc',
-    nombre: 'Cátedra Martínez',
+    nombre: 'Cátedra Martínez (Ejemplo)',
     profesor: 'Dra. Elena Martínez (Sede Ciudad Universitaria)',
     cuatrimestre: '1C / 2C Anual',
+    es_ejemplo: true,
     estilo_metodologico: 'Método de eliminación de Gauss-Jordan formal. Justificación explícita de cada operación elemental de filas (Fi -> Fi + k*Fj). En subespacios vectoriales, demostrar formalmente pertenencia de 0, suma cerrada y producto por escalar. En transformaciones lineales, aplicar siempre Teorema de las Dimensiones.',
     criterios_clave: [
       'Indicar claramente el nombre de cada operación elemental sobre filas de la matriz.',
@@ -148,9 +150,10 @@ export const SEED_CATEDRAS: Catedra[] = [
   {
     id: 'cat_fis_askenazi',
     materia_id: 'mat_fis1_utn',
-    nombre: 'Cátedra Askenazi',
+    nombre: 'Cátedra Askenazi (Ejemplo)',
     profesor: 'Ing. Marcos Askenazi (Campus Lugano / Medrano)',
     cuatrimestre: '1C / 2C Anual',
+    es_ejemplo: true,
     estilo_metodologico: 'Diagrama de Cuerpo Libre (DCL) aislado y obligatorio para cada cuerpo con sistema de referencia (SR) explícito (+x, +y). Prohibido plantear ecuaciones escalares de Newton sin haber mostrado antes los vectores en el DCL. En energía, explicitar trabajo de fuerzas no conservativas W_fnc = Delta Em.',
     criterios_clave: [
       'DCL con vectores de fuerza identificando el par de interacción (acción y reacción) si corresponde.',
@@ -173,9 +176,10 @@ export const SEED_CATEDRAS: Catedra[] = [
   {
     id: 'cat_algo_rosita',
     materia_id: 'mat_algo_fiuba',
-    nombre: 'Cátedra Méndez / Rosita',
+    nombre: 'Cátedra Méndez / Rosita (Ejemplo)',
     profesor: 'Lic. Martín Méndez & Ing. Rosa \'Rosita\' W.',
     cuatrimestre: '1C / 2C',
+    es_ejemplo: true,
     estilo_metodologico: 'Análisis asintótico formal con notación O-grande, Omega y Theta. Invariantes de ciclo para demostrar corrección de algoritmos iterativos. Manejo meticuloso de memoria dinámica (malloc/free o punteros) y análisis riguroso de casos borde (árbol vacío, lista con 1 elemento).',
     criterios_clave: [
       'Planteo de recurrencias por Teorema Maestro o árbol de recursión con desglose de costos.',
@@ -283,7 +287,7 @@ export const SEED_RESOLUCIONES: Resolucion[] = [
     id: 'res_002_alg_subespacios',
     ejercicio_id: 'ej_002_alg_subespacios',
     resumen_criterio: 'Criterio Cátedra Martínez: Se busca primero el sistema generador de T descartando combinaciones lineales redundantes con matriz traspuesta y Gauss-Jordan. Luego se hallan las ecuaciones implícitas de T para resolver el sistema homogéneo simultáneo con las ecuaciones de S.',
-    resultado_final: 'Base(S ∩ T) = {(1, 1, 2, 1)}, dim(S ∩ T) = 1. La suma S + T NO es directa porque dim(S ∩ T) ≠ 0.',
+    resultado_final: 'Base(S ∩ T) = {(1, 0, 1, 0)}, dim(S ∩ T) = 1. La suma S + T NO es directa porque dim(S ∩ T) ≠ 0.',
     votos_positivos: 14,
     votos_negativos: 1,
     estado: 'aprobada',

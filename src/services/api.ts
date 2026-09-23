@@ -8,43 +8,77 @@ import {
   ConsultasStatus,
   EjercicioConDetalle,
   Suscripcion,
+  ListaEsperaEntry,
 } from '../types';
 
+/**
+ * Retrieves or generates an isolated, persistent anonymous user ID per browser session.
+ * This guarantees testers don't share quota, sessions, or votes.
+ */
+export function getAnonUserId(): string {
+  if (typeof window === 'undefined') return 'anon_server';
+  const STORAGE_KEY = 'catedraia_anon_id_v2';
+  let anonId = localStorage.getItem(STORAGE_KEY);
+  if (!anonId || !anonId.startsWith('anon_')) {
+    const randomPart = Math.random().toString(36).substring(2, 10);
+    const timePart = Date.now().toString(36);
+    anonId = `anon_${randomPart}_${timePart}`;
+    localStorage.setItem(STORAGE_KEY, anonId);
+  }
+  return anonId;
+}
+
+/**
+ * Standard fetch wrapper that injects the anonymous identity header on every request.
+ */
+async function fetchWithAnon(url: string, options: RequestInit = {}): Promise<Response> {
+  const anonId = getAnonUserId();
+  const headers = new Headers(options.headers || {});
+  headers.set('X-Anon-User-Id', anonId);
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+}
+
 export const api = {
+  getAnonUserId,
+
   async getPerfil(): Promise<{ usuario: Usuario; consultas: ConsultasStatus }> {
-    const res = await fetch('/api/auth/perfil');
+    const res = await fetchWithAnon('/api/auth/perfil');
     if (!res.ok) throw new Error('Error al obtener perfil');
     return res.json();
   },
 
   async login(email: string): Promise<{ usuario: Usuario; token: string }> {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetchWithAnon('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Error al iniciar sesión');
     }
     return res.json();
   },
 
   async registro(nombre: string, email: string): Promise<{ usuario: Usuario; token: string }> {
-    const res = await fetch('/api/auth/registro', {
+    const res = await fetchWithAnon('/api/auth/registro', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre, email }),
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Error al registrarse');
     }
     return res.json();
   },
 
   async switchUser(usuario_id: string): Promise<{ usuario: Usuario }> {
-    const res = await fetch('/api/auth/switch-user', {
+    const res = await fetchWithAnon('/api/auth/switch-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usuario_id }),
@@ -54,27 +88,27 @@ export const api = {
   },
 
   async getFacultades(): Promise<Facultad[]> {
-    const res = await fetch('/api/facultades');
+    const res = await fetchWithAnon('/api/facultades');
     if (!res.ok) throw new Error('Error al cargar facultades');
     return res.json();
   },
 
   async getMaterias(facultad_id?: string): Promise<Materia[]> {
     const url = facultad_id ? `/api/materias?facultad_id=${encodeURIComponent(facultad_id)}` : '/api/materias';
-    const res = await fetch(url);
+    const res = await fetchWithAnon(url);
     if (!res.ok) throw new Error('Error al cargar materias');
     return res.json();
   },
 
   async getCatedras(materia_id?: string): Promise<Catedra[]> {
     const url = materia_id ? `/api/catedras?materia_id=${encodeURIComponent(materia_id)}` : '/api/catedras';
-    const res = await fetch(url);
+    const res = await fetchWithAnon(url);
     if (!res.ok) throw new Error('Error al cargar cátedras');
     return res.json();
   },
 
   async getCatedraDetalle(id: string): Promise<Catedra & { materia?: Materia; facultad?: Facultad }> {
-    const res = await fetch(`/api/catedras/${id}`);
+    const res = await fetchWithAnon(`/api/catedras/${id}`);
     if (!res.ok) throw new Error('Error al cargar detalle de la cátedra');
     return res.json();
   },
@@ -85,13 +119,13 @@ export const api = {
     if (filters?.tema) params.set('tema', filters.tema);
     if (filters?.query) params.set('query', filters.query);
 
-    const res = await fetch(`/api/ejercicios?${params.toString()}`);
+    const res = await fetchWithAnon(`/api/ejercicios?${params.toString()}`);
     if (!res.ok) throw new Error('Error al cargar ejercicios');
     return res.json();
   },
 
   async getEjercicioDetalle(id: string): Promise<EjercicioConDetalle> {
-    const res = await fetch(`/api/ejercicios/${id}`);
+    const res = await fetchWithAnon(`/api/ejercicios/${id}`);
     if (!res.ok) throw new Error('Error al cargar ejercicio');
     return res.json();
   },
@@ -103,27 +137,30 @@ export const api = {
     tema?: string;
     imagen_url?: string;
   }): Promise<Ejercicio> {
-    const res = await fetch('/api/ejercicios', {
+    const res = await fetchWithAnon('/api/ejercicios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Error al guardar ejercicio');
     }
     return res.json();
   },
 
-  async extraerTextoOCR(imagen_base64: string, mime_type?: string): Promise<{ texto_ocr: string }> {
-    const res = await fetch('/api/ocr/extraer', {
+  async extraerTextoOCR(
+    imagen_base64: string,
+    mime_type?: string
+  ): Promise<{ texto_ocr: string; advertencia?: string }> {
+    const res = await fetchWithAnon('/api/ocr/extraer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imagen_base64, mime_type }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Error al extraer texto con OCR');
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.mensaje || err.error || 'Error al extraer texto con OCR');
     }
     return res.json();
   },
@@ -133,19 +170,19 @@ export const api = {
     catedra_id?: string;
     enunciado?: string;
     titulo?: string;
+    tema?: string;
     imagen_base64?: string;
+    mime_type?: string;
   }): Promise<Resolucion> {
-    const res = await fetch('/api/resoluciones/generar', {
+    const res = await fetchWithAnon('/api/resoluciones/generar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+
     if (!res.ok) {
-      const err = await res.json();
-      const errorObj = new Error(err.error || err.mensaje || 'Error al resolver el ejercicio');
-      (errorObj as any).upgrade_required = err.upgrade_required;
-      (errorObj as any).status = res.status;
-      throw errorObj;
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.mensaje || err.error || 'No se pudo generar la resolución');
     }
     return res.json();
   },
@@ -160,53 +197,45 @@ export const api = {
     votos_negativos: number;
     estado: 'aprobada' | 'en_revision';
     mensaje: string;
+    mi_voto?: {
+      tipo: 'positivo' | 'negativo';
+      comentario?: string;
+    };
   }> {
-    const res = await fetch(`/api/resoluciones/${id}/votar`, {
+    const res = await fetchWithAnon(`/api/resoluciones/${id}/votar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tipo, comentario }),
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Error al registrar voto');
     }
     return res.json();
   },
 
   async getConsultasRestantes(): Promise<ConsultasStatus> {
-    const res = await fetch('/api/consultas/restantes-hoy');
+    const res = await fetchWithAnon('/api/consultas/restantes-hoy');
     if (!res.ok) throw new Error('Error al consultar límites diarios');
     return res.json();
   },
 
-  async crearPagoMercadoPago(plan: 'mensual' | 'cuatrimestral' | 'anual'): Promise<{
-    preference_id: string;
-    plan: string;
-    monto_ars: number;
-    checkout_url: string;
-    sandbox_init_point: string;
-  }> {
-    const res = await fetch('/api/suscripciones/crear-pago', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan }),
-    });
-    if (!res.ok) throw new Error('Error al iniciar checkout de Mercado Pago');
-    return res.json();
-  },
-
-  async webhookMercadoPago(data: {
-    usuario_id?: string;
-    plan: string;
-    payment_id: string;
-    status: string;
-  }): Promise<{ success: boolean; usuario: Usuario; suscripcion: Suscripcion }> {
-    const res = await fetch('/api/suscripciones/webhook', {
+  // Waitlist (honest willingness to pay / interest measuring)
+  async unirseListaEspera(data: {
+    email: string;
+    plan_interes: 'mensual' | 'cuatrimestral' | 'anual';
+    catedra_id?: string;
+    catedra_nombre?: string;
+  }): Promise<{ success: boolean; mensaje: string; registro: ListaEsperaEntry }> {
+    const res = await fetchWithAnon('/api/waitlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Error en webhook de confirmación');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Error al registrarte en la lista de espera');
+    }
     return res.json();
   },
 
@@ -215,13 +244,13 @@ export const api = {
     es_premium: boolean;
     suscripcion: Suscripcion | null;
   }> {
-    const res = await fetch('/api/suscripciones/estado');
+    const res = await fetchWithAnon('/api/suscripciones/estado');
     if (!res.ok) throw new Error('Error al obtener estado de suscripción');
     return res.json();
   },
 
   async cancelarSuscripcion(): Promise<{ success: boolean; usuario: Usuario }> {
-    const res = await fetch('/api/suscripciones/cancelar', { method: 'POST' });
+    const res = await fetchWithAnon('/api/suscripciones/cancelar', { method: 'POST' });
     if (!res.ok) throw new Error('Error al cancelar suscripción');
     return res.json();
   },

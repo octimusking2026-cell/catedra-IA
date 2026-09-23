@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Facultad,
   Materia,
@@ -49,6 +49,27 @@ export const Home: React.FC<HomeProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTema, setSelectedTema] = useState<string>('todos');
+
+  // Faculties that actually have registered subjects
+  const facultadesConMaterias = useMemo(() => {
+    return facultades.filter((f) => materias.some((m) => m.facultad_id === f.id));
+  }, [facultades, materias]);
+
+  // If currently selected facultad has no subjects, automatically adjust to the first valid one
+  useEffect(() => {
+    if (facultadesConMaterias.length > 0) {
+      if (!selectedFacultad || !facultadesConMaterias.some((f) => f.id === selectedFacultad.id)) {
+        const firstValid = facultadesConMaterias[0];
+        setSelectedFacultad(firstValid);
+        const firstMat = materias.find((m) => m.facultad_id === firstValid.id);
+        if (firstMat) {
+          setSelectedMateria(firstMat);
+          const firstCat = catedras.find((c) => c.materia_id === firstMat.id);
+          if (firstCat) setSelectedCatedra(firstCat);
+        }
+      }
+    }
+  }, [facultadesConMaterias, selectedFacultad]);
 
   // Filtered materias according to selected facultad
   const materiasDeFacultad = selectedFacultad
@@ -118,6 +139,9 @@ export const Home: React.FC<HomeProps> = ({
           <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-blue-600" />
             <span>Configurá tu Cátedra Activa</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+              Cátedras de ejemplo inicial
+            </span>
           </h2>
           <span className="text-xs text-slate-500 hidden sm:inline">
             El feed y la IA se adaptarán a estos criterios
@@ -134,7 +158,7 @@ export const Home: React.FC<HomeProps> = ({
             <select
               value={selectedFacultad?.id || ''}
               onChange={(e) => {
-                const fac = facultades.find((f) => f.id === e.target.value);
+                const fac = facultadesConMaterias.find((f) => f.id === e.target.value);
                 if (fac) {
                   setSelectedFacultad(fac);
                   const firstMat = materias.find((m) => m.facultad_id === fac.id);
@@ -147,7 +171,7 @@ export const Home: React.FC<HomeProps> = ({
               }}
               className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
-              {facultades.map((f) => (
+              {facultadesConMaterias.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.siglas} — {f.nombre}
                 </option>
@@ -206,9 +230,14 @@ export const Home: React.FC<HomeProps> = ({
         {selectedCatedra && (
           <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900 flex-wrap">
                 <BookOpen className="w-4 h-4 text-blue-600" />
                 <span>Criterio Metodológico: {selectedCatedra.nombre}</span>
+                {selectedCatedra.es_ejemplo && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                    Ejemplo piloto
+                  </span>
+                )}
               </div>
               <span className="text-xs text-slate-500 font-medium">
                 {selectedCatedra.profesor} · {selectedCatedra.cuatrimestre}
@@ -240,7 +269,7 @@ export const Home: React.FC<HomeProps> = ({
               Banco de Ejercicios de {selectedCatedra?.nombre || 'la Cátedra'}
             </h3>
             <p className="text-xs text-slate-500">
-              Mostrando {filteredEjercicios.length} ejercicios resueltos y verificados
+              Mostrando {filteredEjercicios.length} ejercicios con resolución paso a paso
             </p>
           </div>
 
@@ -294,6 +323,7 @@ export const Home: React.FC<HomeProps> = ({
                 key={ej.id}
                 ejercicio={ej}
                 onSelect={(id) => onSelectEjercicio(id)}
+                onSolveNow={(ej) => onSelectEjercicio(ej.id)}
               />
             ))}
           </div>
