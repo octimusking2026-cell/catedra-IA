@@ -1,0 +1,6 @@
+{
+  "name": "CátedraIA - Resolutor Universitario",
+  "description": "Subí tu ejercicio de la facu en foto o PDF y resolvelo paso a paso con IA según el criterio y método específico de tu cátedra universitaria.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
