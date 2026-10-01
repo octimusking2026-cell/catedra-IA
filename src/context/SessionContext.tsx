@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Usuario } from '../types';
+import { Usuario, ConsultasStatus } from '../types';
 import { auth, onAuthStateChanged, logout as firebaseLogout, User } from '../services/firebase';
 import { api } from '../services/api';
 
 interface SessionContextType {
   authUser: User | null;
   usuario: Usuario | null;
+  consultas: ConsultasStatus | null;
+  setConsultas: React.Dispatch<React.SetStateAction<ConsultasStatus | null>>;
   authLoading: boolean;
   terminosAceptados: boolean;
   logout: () => Promise<void>;
@@ -19,6 +21,7 @@ const SessionContext = createContext<SessionContextType | null>(null);
 export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [usuario, setUsuario] = useState<Usuario | null>(null);
+  const [consultas, setConsultas] = useState<ConsultasStatus | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [terminosAceptados, setTerminosAceptados] = useState(true);
 
@@ -26,6 +29,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const perfilRes = await api.getPerfil();
       setUsuario(perfilRes.usuario);
+      setConsultas(perfilRes.consultas);
       setTerminosAceptados(perfilRes.terminos_aceptados !== false);
     } catch (err) {
       console.error('Error refrescando perfil de usuario:', err);
@@ -39,12 +43,14 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         try {
           const perfilRes = await api.getPerfil();
           setUsuario(perfilRes.usuario);
+          setConsultas(perfilRes.consultas);
           setTerminosAceptados(perfilRes.terminos_aceptados !== false);
         } catch (err) {
           console.error('Error cargando usuario inicial:', err);
         }
       } else {
         setUsuario(null);
+        setConsultas(null);
         setTerminosAceptados(true);
       }
       setAuthLoading(false);
@@ -57,6 +63,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       await firebaseLogout();
       setUsuario(null);
+      setConsultas(null);
       setAuthUser(null);
       setTerminosAceptados(true);
     } catch (err) {
@@ -69,6 +76,8 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       value={{
         authUser,
         usuario,
+        consultas,
+        setConsultas,
         authLoading,
         terminosAceptados,
         logout,

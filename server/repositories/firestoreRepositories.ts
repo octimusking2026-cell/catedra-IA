@@ -21,6 +21,7 @@ import {
   deleteUserDataFromFirestore,
   createFeedback,
   getEjercicios,
+  getEjerciciosPaginated,
   getEjerciciosByUsuario,
   getEjercicioById,
   getEjercicioByHash,
@@ -70,7 +71,12 @@ export class FirestoreUsuariosRepository implements IUsuariosRepository {
     return user;
   }
 
-  async deleteUserData(userId: string): Promise<void> {
+  async deleteUserData(userId: string): Promise<{
+    success: boolean;
+    authDeleted: boolean;
+    firestoreDeleted: boolean;
+    errors?: string[];
+  }> {
     return deleteUserDataFromFirestore(userId);
   }
 }
@@ -92,6 +98,24 @@ export class FirestoreEjerciciosRepository implements IEjerciciosRepository {
     currentUserId?: string;
   }): Promise<Ejercicio[]> {
     return getEjercicios(filter);
+  }
+
+  async getAllPaginated(filter?: {
+    catedra_id?: string;
+    materia_id?: string;
+    tema?: string;
+    query?: string;
+    currentUserId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    ejercicios: Ejercicio[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    return getEjerciciosPaginated(filter);
   }
 
   async getByUsuario(userId: string): Promise<Ejercicio[]> {

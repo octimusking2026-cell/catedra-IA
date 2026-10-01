@@ -36,8 +36,9 @@ app.get('/healthz', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'catedra-ia' });
 });
 
-// Dedicated 10MB parser for heavy payload routes (OCR and Generar Resolución)
-const json10mb = express.json({ limit: `${SERVER_CONFIG.maxFileBytes / (1024 * 1024)}mb` });
+// Dedicated 15MB parser for heavy payload routes (considering base64 inflation of up to 33%)
+const jsonParserLimit = Math.ceil((SERVER_CONFIG.maxFileBytes * 1.4) / (1024 * 1024));
+const jsonHeavyLimit = express.json({ limit: `${jsonParserLimit}mb` });
 
 // Standard 100kb parser for lighter endpoints
 const json100kb = express.json({ limit: '100kb' });
@@ -45,7 +46,7 @@ const json100kb = express.json({ limit: '100kb' });
 // Route-specific body parsing
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.path === '/api/ocr/extraer' || req.path === '/api/resoluciones/generar') {
-    return json10mb(req, res, next);
+    return jsonHeavyLimit(req, res, next);
   }
   return json100kb(req, res, next);
 });

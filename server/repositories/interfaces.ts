@@ -20,7 +20,12 @@ export interface IUsuariosRepository {
     picture?: string;
   }): Promise<Usuario>;
   createOrUpdate(user: Usuario): Promise<Usuario>;
-  deleteUserData(userId: string): Promise<void>;
+  deleteUserData(userId: string): Promise<{
+    success: boolean;
+    authDeleted: boolean;
+    firestoreDeleted: boolean;
+    errors?: string[];
+  }>;
 }
 
 export interface IEjerciciosRepository {
@@ -33,6 +38,21 @@ export interface IEjerciciosRepository {
     query?: string;
     currentUserId?: string;
   }): Promise<Ejercicio[]>;
+  getAllPaginated(filter?: {
+    catedra_id?: string;
+    materia_id?: string;
+    tema?: string;
+    query?: string;
+    currentUserId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    ejercicios: Ejercicio[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>;
   getByUsuario(userId: string): Promise<Ejercicio[]>;
   create(ejercicio: Ejercicio): Promise<Ejercicio>;
   delete(id: string): Promise<void>;

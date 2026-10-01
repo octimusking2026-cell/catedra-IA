@@ -113,13 +113,29 @@ export const api = {
     return res.json();
   },
 
-  async getEjercicios(filters?: { catedra_id?: string; materia_id?: string; tema?: string; query?: string; orden?: 'recientes' | 'antiguos' }): Promise<any[]> {
+  async getEjercicios(filters?: {
+    catedra_id?: string;
+    materia_id?: string;
+    tema?: string;
+    query?: string;
+    orden?: 'recientes' | 'antiguos';
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    ejercicios: any[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const params = new URLSearchParams();
     if (filters?.catedra_id) params.set('catedra_id', filters.catedra_id);
     if (filters?.materia_id) params.set('materia_id', filters.materia_id);
     if (filters?.tema) params.set('tema', filters.tema);
     if (filters?.query) params.set('query', filters.query);
     if (filters?.orden) params.set('orden', filters.orden);
+    if (filters?.page) params.set('page', String(filters.page));
+    if (filters?.limit) params.set('limit', String(filters.limit));
 
     const res = await fetchWithAuth(`/api/ejercicios?${params.toString()}`);
     if (!res.ok) throw new Error('Error al cargar ejercicios');

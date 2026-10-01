@@ -124,11 +124,10 @@ export const PoliticaPrivacidad: React.FC = () => {
             <span>6. Conservación y borrado de datos</span>
           </h2>
           <p>
-            Si usás la opción **"Borrar mis datos"** desde la pestaña de ayuda, se eliminará inmediatamente de Firestore: tu perfil de usuario, tus ejercicios subidos, tus votos y comentarios, tus registros de cuotas y logs de llamadas de IA.
+            Si usás la opción <strong>"Borrar mis datos"</strong> desde la pestaña de ayuda, se eliminará inmediatamente y de manera irreversible toda tu información personal y académica de nuestros sistemas.
           </p>
           <p className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-            {/* TODO: Modificar deleteUserDataFromFirestore en el backend para borrar resoluciones huérfanas, reportes históricos, registros de lista de espera y la cuenta de Firebase Auth en el futuro */}
-            <strong>Nota técnica de conservación actual:</strong> Actualmente el sistema de borrado automático limpia tu perfil y ejercicios asociados de Firestore, pero no elimina las resoluciones generadas (que quedan huérfanas o se reutilizan), reportes que hayas enviado, registros históricos de la lista de espera, ni tu credencial técnica directa en el panel de Firebase Authentication.
+            <strong>Garantía de eliminación absoluta:</strong> El sistema de supresión limpia de forma definitiva: (a) tu perfil de usuario de Firestore, (b) todos tus ejercicios subidos y sus resoluciones correspondientes, (c) tus votos, comentarios y discrepancias académicas, (d) tus reportes y feedback enviados, (e) tus registros de uso diario y logs de llamadas de IA, (f) tu registro de lista de espera asociado a tu email, y (g) tu cuenta técnica en <strong>Firebase Authentication</strong>, garantizando un borrado completo.
           </p>
         </section>
 

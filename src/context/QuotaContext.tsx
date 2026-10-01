@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ConsultasStatus } from '../types';
-import { api } from '../services/api';
 import { useSession } from './SessionContext';
 
 interface QuotaContextType {
@@ -17,28 +16,15 @@ interface QuotaContextType {
 const QuotaContext = createContext<QuotaContextType | null>(null);
 
 export const QuotaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { authUser } = useSession();
-  const [consultas, setConsultas] = useState<ConsultasStatus | null>(null);
+  const { authUser, consultas, setConsultas, refreshUser } = useSession();
   const [showLimiteModal, setShowLimiteModal] = useState(false);
 
   const refreshQuota = useCallback(async () => {
     if (!authUser) return;
-    try {
-      const perfilRes = await api.getPerfil();
-      setConsultas(perfilRes.consultas);
-    } catch (err) {
-      console.error('Error refrescando cuota de consultas:', err);
-    }
-  }, [authUser]);
+    await refreshUser();
+  }, [authUser, refreshUser]);
 
-  useEffect(() => {
-    if (authUser) {
-      refreshQuota();
-    } else {
-      setConsultas(null);
-    }
-  }, [authUser, refreshQuota]);
-
+  // Sync window events
   useEffect(() => {
     const handleLimitReached = () => {
       setShowLimiteModal(true);

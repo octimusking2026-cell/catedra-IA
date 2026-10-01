@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, ArrowRight, ThumbsUp, ThumbsDown, Clock, Sparkles } from 'lucide-react';
 import { EjercicioConDetalle } from '../types';
 
@@ -11,21 +12,16 @@ interface EjercicioCardProps {
     catedra_nombre?: string;
     materia_nombre?: string;
   };
-  onSelect: (id: string) => void;
-  onSolveNow?: (ejercicio: EjercicioConDetalle) => void;
 }
 
-export const EjercicioCard: React.FC<EjercicioCardProps> = ({
-  ejercicio,
-  onSelect,
-  onSolveNow,
-}) => {
+export const EjercicioCard: React.FC<EjercicioCardProps> = ({ ejercicio }) => {
   const hasResolution = ejercicio.tiene_resolucion;
 
   return (
-    <div
-      onClick={() => onSelect(ejercicio.id)}
-      className="group relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+    <Link
+      to={`/ejercicio/${ejercicio.id}`}
+      className="group relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 outline-none"
+      aria-label={`Ver ejercicio: ${ejercicio.titulo}. Materia: ${ejercicio.materia_nombre || 'General'}`}
     >
       <div>
         {/* Top Meta Header: Chair & Topic */}
@@ -45,27 +41,27 @@ export const EjercicioCard: React.FC<EjercicioCardProps> = ({
             )}
             {hasResolution ? (
               ejercicio.estado_resolucion === 'verificada' ? (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                <CheckCircle2 className="w-3 h-3" />
-                Verificada
-              </span>
-            ) : ejercicio.estado_resolucion === 'en_revision' ? (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">
-                <AlertTriangle className="w-3 h-3" />
-                En revisión
-              </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Verificada
+                </span>
+              ) : ejercicio.estado_resolucion === 'en_revision' ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                  <AlertTriangle className="w-3 h-3" />
+                  En revisión
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                  <Clock className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+                  Sin verificar
+                </span>
+              )
             ) : (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                <Clock className="w-3 h-3 text-slate-500 dark:text-slate-400" />
-                Sin verificar
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/70 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                <Clock className="w-3 h-3" />
+                Sin resolver
               </span>
-            )
-          ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/70 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
-              <Clock className="w-3 h-3" />
-              Sin resolver
-            </span>
-          )}
+            )}
           </div>
         </div>
 
@@ -101,27 +97,20 @@ export const EjercicioCard: React.FC<EjercicioCardProps> = ({
           )}
         </div>
 
-        {/* Action button */}
+        {/* Action indication (using static styled text to prevent invalid nesting) */}
         {hasResolution ? (
           <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-semibold group-hover:translate-x-0.5 transition-transform">
             <span>Ver Paso a Paso</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onSolveNow) onSolveNow(ejercicio);
-              else onSelect(ejercicio.id);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 dark:bg-blue-500 text-white font-bold text-xs hover:bg-blue-700 dark:hover:bg-blue-600 shadow-xs transition-colors cursor-pointer"
-          >
+          <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold group-hover:translate-x-0.5 transition-transform">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Resolver</span>
-          </button>
+            <span>Resolver ahora</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
         )}
       </div>
-    </div>
+    </Link>
   );
 };

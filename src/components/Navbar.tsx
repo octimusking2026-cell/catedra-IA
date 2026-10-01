@@ -134,22 +134,24 @@ export const Navbar: React.FC = () => {
               )}
             </button>
 
-            {/* Daily Quota Counter */}
-            <div
+            {/* Daily Quota Counter button */}
+            <button
+              type="button"
               onClick={openLimiteModal}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 outline-none"
               title="Cuota diaria de uso justo"
+              aria-label="Ver cuota diaria de uso justo"
             >
               <Zap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               <span>
                 <strong className="text-slate-900 dark:text-white font-semibold">{remaining}</strong>/{limit} uso justo hoy
               </span>
-            </div>
-
+            </button>
+ 
             {/* User Identity Chip */}
             <Link
               to="/perfil"
-              className="flex items-center gap-2 p-1 sm:px-2 sm:py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700 text-left cursor-pointer"
+              className="flex items-center gap-2 p-1 sm:px-2 sm:py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700 text-left cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 outline-none"
             >
               {usuario?.foto_url ? (
                 <img
@@ -172,32 +174,36 @@ export const Navbar: React.FC = () => {
                 </div>
               </div>
             </Link>
-
+ 
             {/* Logout Button */}
             <button
+              type="button"
               onClick={handleLogout}
-              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 outline-none"
               title="Cerrar sesión"
               aria-label="Cerrar sesión"
             >
               <LogOut className="w-4 h-4" />
             </button>
-
+ 
             {/* Mobile Menu Button */}
             <button
+              type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Abrir menú"
+              className="md:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500 outline-none"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-menu"
+              aria-label={mobileMenuOpen ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'}
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
       </div>
-
+ 
       {/* Mobile Menu Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 space-y-1">
+        <div id="mobile-menu" className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = isActive(item);
@@ -206,7 +212,7 @@ export const Navbar: React.FC = () => {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-blue-500 outline-none ${
                   active
                     ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 font-semibold'
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -218,21 +224,23 @@ export const Navbar: React.FC = () => {
             );
           })}
           <button
+            type="button"
             onClick={() => {
               setMobileMenuOpen(false);
               toggleTheme();
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500 outline-none"
           >
             {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
             {isDarkMode ? 'Modo claro' : 'Modo oscuro'}
           </button>
           <button
+            type="button"
             onClick={() => {
               setMobileMenuOpen(false);
               handleLogout();
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 focus-visible:ring-2 focus-visible:ring-blue-500 outline-none"
           >
             <LogOut className="w-4 h-4" />
             Cerrar Sesión

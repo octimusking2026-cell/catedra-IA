@@ -35,7 +35,7 @@ export const SubirEjercicio: React.FC = () => {
     refreshEjercicios,
   } = useCatalog();
   const { consultas, openLimiteModal, refreshQuota } = useQuota();
-  const { usuario: _usuario, authUser } = useSession();
+  const { authUser } = useSession();
 
   const [titulo, setTitulo] = useState('');
   const [enunciado, setEnunciado] = useState('');
@@ -45,6 +45,9 @@ export const SubirEjercicio: React.FC = () => {
   const [pasosRecibidos, setPasosRecibidos] = useState<PasoResolucion[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [visibilidad, setVisibilidad] = useState<'privado' | 'compartido'>('privado');
+
+  // Drag and Drop state
+  const [isDragging, setIsDragging] = useState(false);
 
   // Request modal state
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -60,6 +63,7 @@ export const SubirEjercicio: React.FC = () => {
   // Custom hook for File & PDF management and OCR
   const {
     preview: imagePreview,
+    fileObject, // Native File object from useFileUpload
     fileMeta: uploadedFileMeta,
     isProcessing: isExtractingOcr,
     setIsProcessing: setIsExtractingOcr,
@@ -69,6 +73,7 @@ export const SubirEjercicio: React.FC = () => {
     incluirImagen,
     setIncluirImagen,
     clearFile,
+    processFile,
     handleInputChange: handleImageChange,
   } = useFileUpload({
     onExtractedText: (extracted) => {
@@ -100,6 +105,25 @@ export const SubirEjercicio: React.FC = () => {
       }
     },
   });
+
+  // Drag and Drop event handlers for full desktop support
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  };
 
   // Filtered materias according to selected carrera
   const materiasDeCarrera = materias.filter(
@@ -158,8 +182,6 @@ export const SubirEjercicio: React.FC = () => {
     }
   };
 
-
-
   // Submit and solve
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,13 +213,24 @@ export const SubirEjercicio: React.FC = () => {
         uploadedFileMeta?.mimeType ||
         (imagePreview?.startsWith('data:application/pdf') ? 'application/pdf' : 'image/jpeg');
 
+      // Convert File object to base64 strictly on-demand right before API dispatch
+      let finalBase64: string | undefined = undefined;
+      if (fileObject) {
+        finalBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('Error al codificar el archivo adjunto.'));
+          reader.readAsDataURL(fileObject);
+        });
+      }
+
       const res = await api.generarResolucionStream(
         {
           catedra_id: activeCatedra.id,
           enunciado: enunciado.trim(),
           titulo: titulo.trim() || `Ejercicio de ${activeCatedra.nombre}`,
           tema: activeTema,
-          imagen_base64: imagePreview || undefined,
+          imagen_base64: finalBase64,
           mime_type: detectedMime,
           incluir_imagen: incluirImagen,
           visibilidad,
@@ -250,8 +283,6 @@ export const SubirEjercicio: React.FC = () => {
         </p>
       </div>
 
-
-
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Main Grid: Upload box + Chair selection */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -261,10 +292,20 @@ export const SubirEjercicio: React.FC = () => {
               1. Foto o Captura del Ejercicio
             </label>
 
-            <div className="relative border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-6 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col items-center justify-center min-h-[220px]">
+            {/* Active Dropzone with drag detection */}
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-colors flex flex-col items-center justify-center min-h-[220px] ${
+                isDragging
+                  ? 'border-blue-600 bg-blue-50/40 scale-[1.01]'
+                  : 'border-slate-300 hover:border-blue-500 bg-slate-50/50 hover:bg-slate-50'
+              }`}
+            >
               {imagePreview ? (
                 <div className="space-y-3 w-full">
-                  {uploadedFileMeta?.isPdf || imagePreview.startsWith('data:application/pdf') ? (
+                  {uploadedFileMeta?.isPdf || imagePreview.startsWith('blob:') && uploadedFileMeta?.mimeType === 'application/pdf' ? (
                     <div className="p-4 bg-red-50/90 border border-red-200 rounded-xl flex items-center gap-3 text-left shadow-xs">
                       <div className="w-12 h-12 rounded-lg bg-red-600 text-white flex flex-col items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                         <FileText className="w-5 h-5" />
@@ -378,16 +419,17 @@ export const SubirEjercicio: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* 1. Carrera Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
+                <label htmlFor="select-carrera-subir" className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
                   1. Carrera
                 </label>
                 <select
+                  id="select-carrera-subir"
                   value={selectedCarrera?.id || ''}
                   onChange={(e) => {
                     const car = carreras.find((c) => c.id === e.target.value);
                     if (car) setSelectedCarrera(car);
                   }}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-xs focus-visible:ring-offset-2"
                 >
                   {carreras.map((car) => (
                     <option key={car.id} value={car.id}>
@@ -399,16 +441,17 @@ export const SubirEjercicio: React.FC = () => {
 
               {/* 2. Materia Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
+                <label htmlFor="select-materia-subir" className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
                   2. Materia
                 </label>
                 <select
+                  id="select-materia-subir"
                   value={selectedMateria?.id || ''}
                   onChange={(e) => {
                     const mat = materias.find((m) => m.id === e.target.value);
                     if (mat) setSelectedMateria(mat);
                   }}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-xs focus-visible:ring-offset-2"
                 >
                   {materiasDeCarrera.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -422,16 +465,17 @@ export const SubirEjercicio: React.FC = () => {
             {/* 3. Cátedra Selector (Only if more than 1 catedra exists) */}
             {catedrasDeMateria.length > 1 && (
               <div>
-                <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
+                <label htmlFor="select-catedra-subir" className="block text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
                   3. Cátedra / Docente
                 </label>
                 <select
+                  id="select-catedra-subir"
                   value={activeCatedra?.id || ''}
                   onChange={(e) => {
                     const cat = catedras.find((c) => c.id === e.target.value);
                     if (cat) setSelectedCatedra(cat);
                   }}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-xs focus-visible:ring-offset-2"
                 >
                   {catedrasDeMateria.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -485,10 +529,11 @@ export const SubirEjercicio: React.FC = () => {
             {/* Title & Topic Inputs */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="input-titulo-subir" className="block text-xs font-semibold text-slate-700 mb-1">
                   Título identificador
                 </label>
                 <input
+                  id="input-titulo-subir"
                   type="text"
                   placeholder="Ej: Límite de Taylor para 2do Parcial"
                   value={titulo}
@@ -498,10 +543,11 @@ export const SubirEjercicio: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="select-tema-subir" className="block text-xs font-semibold text-slate-700 mb-1">
                   Tema o Unidad
                 </label>
                 <select
+                  id="select-tema-subir"
                   value={tema || activeCatedra?.temas?.[0] || ''}
                   onChange={(e) => setTema(e.target.value)}
                   disabled={!activeCatedra || !activeCatedra.temas || activeCatedra.temas.length === 0}
@@ -525,7 +571,7 @@ export const SubirEjercicio: React.FC = () => {
         {/* Text Area for Problem Statement (Enunciado) */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider">
+            <label htmlFor="textarea-enunciado-subir" className="block text-xs font-bold text-slate-900 uppercase tracking-wider">
               3. Enunciado Completo del Ejercicio
             </label>
             <span className="text-[11px] text-slate-500">
@@ -534,6 +580,7 @@ export const SubirEjercicio: React.FC = () => {
           </div>
 
           <textarea
+            id="textarea-enunciado-subir"
             rows={5}
             placeholder="Pega o escribe aquí el enunciado del ejercicio, incluyendo datos y consignas..."
             value={enunciado}

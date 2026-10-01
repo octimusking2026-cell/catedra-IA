@@ -2,24 +2,33 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { ejerciciosRepo, resolucionesRepo, academicRepo, votosRepo } from '../repositories';
 import { SERVER_CONFIG } from '../config';
+import { db } from '../db';
 
 const router = Router();
 
 router.get('/ejercicios', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { catedra_id, materia_id, tema, query, orden } = req.query;
+    const { catedra_id, materia_id, tema, query, orden, page, limit } = req.query;
     const userId = req.uid || req.user!.uid;
     const isAdmin = SERVER_CONFIG.adminUids.includes(userId);
 
-    let items = await ejerciciosRepo.getAll({
+    const pageNum = page ? Math.max(1, parseInt(String(page), 10)) : 1;
+    const limitNum = limit ? Math.max(1, parseInt(String(limit), 10)) : 10;
+
+    // Use our optimized server-side paginated repository method
+    const paginatedResult = await ejerciciosRepo.getAllPaginated({
       catedra_id: catedra_id ? String(catedra_id) : undefined,
       materia_id: materia_id ? String(materia_id) : undefined,
       tema: tema ? String(tema) : undefined,
       query: query ? String(query) : undefined,
       currentUserId: userId,
+      page: pageNum,
+      limit: limitNum,
     });
 
-    // Ocultar ejercicios con aprobado === false excepto para administradores o el propio creador
+    let items = paginatedResult.ejercicios;
+
+    // Filter approved === false except for admin/creator on the page items
     items = items.filter((e) => {
       if (e.aprobado === false) {
         return isAdmin || e.usuario_id_subio === userId;
@@ -27,7 +36,28 @@ router.get('/ejercicios', authMiddleware, async (req: Request, res: Response) =>
       return true;
     });
 
-    // Cargar catálogo de referencia en memoria en una sola llamada paralela
+    // Bulk-fetch resolutions for all exercises on the current page (ELIMINATES N+1)
+    const exerciseIds = items.map((e) => e.id);
+    const resolutionsMap = new Map<string, any>();
+
+    if (exerciseIds.length > 0) {
+      try {
+        const resSnaps = await db.collection('resoluciones')
+          .where('ejercicio_id', 'in', exerciseIds)
+          .get();
+
+        resSnaps.docs.forEach((doc) => {
+          const r = doc.data();
+          if (r.estado !== 'archivada') {
+            resolutionsMap.set(r.ejercicio_id, r);
+          }
+        });
+      } catch (resErr) {
+        console.warn('[EjerciciosRoute] Could not fetch resolutions in batch:', resErr);
+      }
+    }
+
+    // Load academic catalog reference maps once in parallel
     const [allCatedras, allMaterias, allFacultades] = await Promise.all([
       academicRepo.getCatedras().catch(() => []),
       academicRepo.getMaterias().catch(() => []),
@@ -38,38 +68,31 @@ router.get('/ejercicios', authMiddleware, async (req: Request, res: Response) =>
     const materiasMap = new Map(allMaterias.map((m) => [m.id, m]));
     const facultadesMap = new Map(allFacultades.map((f) => [f.id, f]));
 
-    const enriched = await Promise.all(
-      items.map(async (e) => {
-        let resDoc = null;
-        try {
-          resDoc = await resolucionesRepo.getByEjercicioId(e.id);
-        } catch (resErr) {
-          console.warn(`[EjerciciosRoute] Could not fetch resolution for ${e.id}:`, resErr);
-        }
+    const enriched = items.map((e) => {
+      const resDoc = resolutionsMap.get(e.id) || null;
 
-        const cat = e.catedra_id ? catedrasMap.get(e.catedra_id) : null;
-        const mat = cat ? materiasMap.get(cat.materia_id) : null;
-        const fac = mat ? facultadesMap.get(mat.facultad_id) : null;
+      const cat = e.catedra_id ? catedrasMap.get(e.catedra_id) : null;
+      const mat = cat ? materiasMap.get(cat.materia_id) : null;
+      const fac = mat ? facultadesMap.get(mat.facultad_id) : null;
 
-        const { usuario_id_subio: _omitSubio, ...resto } = e;
-        const esMio = e.usuario_id_subio === userId;
+      const { usuario_id_subio: _omitSubio, ...resto } = e;
+      const esMio = e.usuario_id_subio === userId;
 
-        return {
-          ...resto,
-          usuario_nombre: esMio ? e.usuario_nombre : undefined,
-          usuario_foto: esMio ? e.usuario_foto : undefined,
-          tiene_resolucion: !!resDoc,
-          votos_positivos: resDoc?.votos_positivos || 0,
-          votos_negativos: resDoc?.votos_negativos || 0,
-          estado_resolucion: resDoc?.estado || 'sin_resolucion',
-          catedra_nombre: cat?.nombre || 'Cátedra General',
-          catedra_profesor: cat?.profesor || '',
-          materia_nombre: mat?.nombre || '',
-          facultad_siglas: fac?.siglas || '',
-          es_mio: esMio,
-        };
-      })
-    );
+      return {
+        ...resto,
+        usuario_nombre: esMio ? e.usuario_nombre : undefined,
+        usuario_foto: esMio ? e.usuario_foto : undefined,
+        tiene_resolucion: !!resDoc,
+        votos_positivos: resDoc?.votos_positivos || 0,
+        votos_negativos: resDoc?.votos_negativos || 0,
+        estado_resolucion: resDoc?.estado || 'sin_resolucion',
+        catedra_nombre: cat?.nombre || 'Cátedra General',
+        catedra_profesor: cat?.profesor || '',
+        materia_nombre: mat?.nombre || '',
+        facultad_siglas: fac?.siglas || '',
+        es_mio: esMio,
+      };
+    });
 
     if (orden === 'antiguos') {
       enriched.sort((a, b) => new Date(a.fecha_subida || 0).getTime() - new Date(b.fecha_subida || 0).getTime());
@@ -77,7 +100,13 @@ router.get('/ejercicios', authMiddleware, async (req: Request, res: Response) =>
       enriched.sort((a, b) => new Date(b.fecha_subida || 0).getTime() - new Date(a.fecha_subida || 0).getTime());
     }
 
-    res.json(enriched);
+    res.json({
+      ejercicios: enriched,
+      total: paginatedResult.total,
+      page: paginatedResult.page,
+      limit: paginatedResult.limit,
+      totalPages: paginatedResult.totalPages,
+    });
   } catch (err: any) {
     console.error('Error listing ejercicios:', err);
     res.status(500).json({ error: 'Error al cargar ejercicios' });
@@ -141,24 +170,35 @@ router.get('/historial', authMiddleware, async (req: Request, res: Response) => 
 
     const userItems = await ejerciciosRepo.getByUsuario(userId);
 
-    const materiasMap: Record<string, { id: string; nombre: string; cantidad: number }> = {};
+    // Load academic catalog reference maps once in parallel (RELIABLY ELIMINATES HISTORIAL N+1)
+    const [allCatedras, allMaterias, allFacultades] = await Promise.all([
+      academicRepo.getCatedras().catch(() => []),
+      academicRepo.getMaterias().catch(() => []),
+      academicRepo.getFacultades().catch(() => []),
+    ]);
+
+    const catedrasMap = new Map(allCatedras.map((c) => [c.id, c]));
+    const materiasMap = new Map(allMaterias.map((m) => [m.id, m]));
+    const facultadesMap = new Map(allFacultades.map((f) => [f.id, f]));
+
+    const userMateriasMap: Record<string, { id: string; nombre: string; cantidad: number }> = {};
 
     for (const e of userItems) {
-      const cat = await academicRepo.getCatedraById(e.catedra_id);
-      const mat = cat ? await academicRepo.getMateriaById(cat.materia_id) : null;
+      const cat = catedrasMap.get(e.catedra_id);
+      const mat = cat ? materiasMap.get(cat.materia_id) : null;
       if (mat) {
-        if (!materiasMap[mat.id]) {
-          materiasMap[mat.id] = { id: mat.id, nombre: mat.nombre, cantidad: 0 };
+        if (!userMateriasMap[mat.id]) {
+          userMateriasMap[mat.id] = { id: mat.id, nombre: mat.nombre, cantidad: 0 };
         }
-        materiasMap[mat.id].cantidad++;
+        userMateriasMap[mat.id].cantidad++;
       }
     }
 
-    const materiasConHistorial = Object.values(materiasMap);
+    const materiasConHistorial = Object.values(userMateriasMap);
 
     let filteredItems = userItems;
     if (materia_id && materia_id !== 'todas') {
-      const targetCatedras = await academicRepo.getCatedrasByMateriaId(String(materia_id));
+      const targetCatedras = allCatedras.filter((c) => c.materia_id === String(materia_id));
       const targetCatIds = targetCatedras.map((c) => c.id);
       filteredItems = userItems.filter((e) => targetCatIds.includes(e.catedra_id));
     }
@@ -172,29 +212,48 @@ router.get('/historial', authMiddleware, async (req: Request, res: Response) => 
     const startIndex = (pageNum - 1) * limitNum;
     const paginatedSlice = filteredItems.slice(startIndex, startIndex + limitNum);
 
-    const enriched = await Promise.all(
-      paginatedSlice.map(async (e) => {
-        const res = await resolucionesRepo.getByEjercicioId(e.id);
-        const cat = await academicRepo.getCatedraById(e.catedra_id);
-        const mat = cat ? await academicRepo.getMateriaById(cat.materia_id) : null;
-        const fac = mat ? await academicRepo.getFacultadById(mat.facultad_id) : null;
+    // Bulk-fetch resolutions for all items on this page
+    const sliceExerciseIds = paginatedSlice.map((e) => e.id);
+    const sliceResolutionsMap = new Map<string, any>();
 
-        const { usuario_id_subio: _omitSubio, ...resto } = e;
+    if (sliceExerciseIds.length > 0) {
+      try {
+        const resSnaps = await db.collection('resoluciones')
+          .where('ejercicio_id', 'in', sliceExerciseIds)
+          .get();
 
-        return {
-          ...resto,
-          es_mio: true,
-          tiene_resolucion: !!res,
-          votos_positivos: res?.votos_positivos || 0,
-          votos_negativos: res?.votos_negativos || 0,
-          estado_resolucion: res?.estado || 'sin_resolucion',
-          catedra_nombre: cat?.nombre || 'Cátedra General',
-          materia_id: mat?.id || '',
-          materia_nombre: mat?.nombre || '',
-          facultad_siglas: fac?.siglas || '',
-        };
-      })
-    );
+        resSnaps.docs.forEach((doc) => {
+          const r = doc.data();
+          if (r.estado !== 'archivada') {
+            sliceResolutionsMap.set(r.ejercicio_id, r);
+          }
+        });
+      } catch (resErr) {
+        console.warn('[HistorialRoute] Could not fetch resolutions in batch:', resErr);
+      }
+    }
+
+    const enriched = paginatedSlice.map((e) => {
+      const res = sliceResolutionsMap.get(e.id) || null;
+      const cat = catedrasMap.get(e.catedra_id);
+      const mat = cat ? materiasMap.get(cat.materia_id) : null;
+      const fac = mat ? facultadesMap.get(mat.facultad_id) : null;
+
+      const { usuario_id_subio: _omitSubio, ...resto } = e;
+
+      return {
+        ...resto,
+        es_mio: true,
+        tiene_resolucion: !!res,
+        votos_positivos: res?.votos_positivos || 0,
+        votos_negativos: res?.votos_negativos || 0,
+        estado_resolucion: res?.estado || 'sin_resolucion',
+        catedra_nombre: cat?.nombre || 'Cátedra General',
+        materia_id: mat?.id || '',
+        materia_nombre: mat?.nombre || '',
+        facultad_siglas: fac?.siglas || '',
+      };
+    });
 
     res.json({
       ejercicios: enriched,
@@ -235,4 +294,3 @@ router.delete('/ejercicios/:id', authMiddleware, async (req: Request, res: Respo
 });
 
 export default router;
-

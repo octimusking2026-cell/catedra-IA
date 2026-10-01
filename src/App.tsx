@@ -6,20 +6,29 @@ import { SessionProvider, useSession } from './context/SessionContext';
 import { QuotaProvider, useQuota } from './context/QuotaContext';
 import { CatalogProvider, useCatalog } from './context/CatalogContext';
 import { Navbar } from './components/Navbar';
-import { Home } from './pages/Home';
-import { SubirEjercicio } from './pages/SubirEjercicio';
-import { VerResolucion } from './pages/VerResolucion';
-import { Perfil } from './pages/Perfil';
-import { AyudaPrivacidad } from './pages/AyudaPrivacidad';
 import { LimiteConsultas } from './components/LimiteConsultas';
 import { FloatingFeedback } from './components/FloatingFeedback';
 import { LoginScreen } from './components/LoginScreen';
-
-import { PoliticaPrivacidad } from './pages/PoliticaPrivacidad';
-import { TerminosCondiciones } from './pages/TerminosCondiciones';
-import { Admin } from './pages/Admin';
 import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
+
+const Home = React.lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
+const SubirEjercicio = React.lazy(() => import('./pages/SubirEjercicio').then(m => ({ default: m.SubirEjercicio })));
+const VerResolucion = React.lazy(() => import('./pages/VerResolucion').then(m => ({ default: m.VerResolucion })));
+const Perfil = React.lazy(() => import('./pages/Perfil').then(m => ({ default: m.Perfil })));
+const AyudaPrivacidad = React.lazy(() => import('./pages/AyudaPrivacidad').then(m => ({ default: m.AyudaPrivacidad })));
+const PoliticaPrivacidad = React.lazy(() => import('./pages/PoliticaPrivacidad').then(m => ({ default: m.PoliticaPrivacidad })));
+const TerminosCondiciones = React.lazy(() => import('./pages/TerminosCondiciones').then(m => ({ default: m.TerminosCondiciones })));
+const Admin = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
+
+const PageLoader = () => (
+  <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-4 py-12">
+    <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold select-none">
+      Cargando página...
+    </p>
+  </div>
+);
 
 function AppContent() {
   const { authUser, usuario, authLoading, terminosAceptados, setTerminosAceptados, refreshUser, logout } = useSession();
@@ -94,11 +103,13 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-          <Routes>
-            <Route path="/privacidad" element={<PoliticaPrivacidad />} />
-            <Route path="/terminos" element={<TerminosCondiciones />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <React.Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/privacidad" element={<PoliticaPrivacidad />} />
+              <Route path="/terminos" element={<TerminosCondiciones />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </React.Suspense>
         </main>
       </div>
     );
@@ -215,29 +226,39 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+      {/* Skip to Main Content Link for keyboard accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2.5 focus:bg-blue-600 focus:text-white focus:font-bold focus:rounded-xl focus:shadow-lg focus:outline-none"
+      >
+        Saltar al contenido principal
+      </a>
+
       {/* Global Navbar with user profile & navigation */}
       <Navbar />
 
       {/* Main Content Area with React Router */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/feed" element={<Home />} />
-          <Route path="/subir" element={<SubirEjercicio />} />
-          <Route path="/ejercicio/:id" element={<VerResolucion />} />
-          <Route path="/resolucion/:id" element={<VerResolucion />} />
-          <Route path="/perfil" element={<Perfil />} />
-          <Route path="/ayuda" element={<AyudaPrivacidad />} />
-          <Route path="/privacidad" element={<PoliticaPrivacidad />} />
-          <Route path="/terminos" element={<TerminosCondiciones />} />
-          <Route
-            path="/admin"
-            element={
-              usuario?.es_admin ? <Admin /> : <Navigate to="/" replace />
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+      <main id="main-content" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <React.Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/feed" element={<Home />} />
+            <Route path="/subir" element={<SubirEjercicio />} />
+            <Route path="/ejercicio/:id" element={<VerResolucion />} />
+            <Route path="/resolucion/:id" element={<VerResolucion />} />
+            <Route path="/perfil" element={<Perfil />} />
+            <Route path="/ayuda" element={<AyudaPrivacidad />} />
+            <Route path="/privacidad" element={<PoliticaPrivacidad />} />
+            <Route path="/terminos" element={<TerminosCondiciones />} />
+            <Route
+              path="/admin"
+              element={
+                usuario?.es_admin ? <Admin /> : <Navigate to="/" replace />
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </React.Suspense>
       </main>
 
       {/* Floating Feedback Button */}

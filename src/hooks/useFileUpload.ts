@@ -1,7 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
+// Use local Vite bundled worker asset rather than external unpkg CDN
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 export interface UploadedFileMeta {
   name: string;
@@ -20,7 +22,7 @@ interface UseFileUploadOptions {
 
 export function useFileUpload(options: UseFileUploadOptions = {}) {
   const {
-    maxPdfBytes = 5 * 1024 * 1024,
+    maxPdfBytes = 10 * 1024 * 1024, // Matches SERVER_CONFIG 10MB
     maxPdfPages = 5,
     maxImageDim = 1280,
     onExtractedText,
@@ -28,18 +30,54 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
   } = options;
 
   const [preview, setPreview] = useState<string | null>(null);
+  const [fileObject, setFileObject] = useState<File | null>(null);
   const [fileMeta, setFileMeta] = useState<UploadedFileMeta | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [incluirImagen, setIncluirImagen] = useState<boolean>(true);
 
+  // Keep track of the current preview URL to revoke it on change or unmount
+  const activeObjectURLRef = useRef<string | null>(null);
+
+  const revokeCurrentObjectURL = useCallback(() => {
+    if (activeObjectURLRef.current) {
+      URL.revokeObjectURL(activeObjectURLRef.current);
+      activeObjectURLRef.current = null;
+    }
+  }, []);
+
+  // Cleanup active Object URL on hook unmount
+  useEffect(() => {
+    return () => {
+      if (activeObjectURLRef.current) {
+        URL.revokeObjectURL(activeObjectURLRef.current);
+      }
+    };
+  }, []);
+
   const clearFile = useCallback(() => {
+    revokeCurrentObjectURL();
     setPreview(null);
+    setFileObject(null);
     setFileMeta(null);
     setError(null);
     setWarning(null);
     setIsProcessing(false);
+  }, [revokeCurrentObjectURL]);
+
+  // Read base64 on-demand only when requested by the API
+  const getFileBase64 = useCallback(async (fileToRead: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve(reader.result as string);
+      };
+      reader.onerror = () => {
+        reject(new Error('Error al convertir el archivo a base64.'));
+      };
+      reader.readAsDataURL(fileToRead);
+    });
   }, []);
 
   const processFile = useCallback(
@@ -47,15 +85,24 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
       setError(null);
       setWarning(null);
 
-      const isPdfFile =
-        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      // Validate MIME and extension
+      const validMimes = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      const validExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.pdf'];
+
+      if (!validMimes.includes(file.type) && !validExtensions.some((val) => ext === val)) {
+        setError('Formato de archivo no soportado. Sube una imagen (PNG, JPG, WebP) o un archivo PDF.');
+        return;
+      }
+
+      const isPdfFile = file.type === 'application/pdf' || ext === '.pdf';
 
       if (isPdfFile) {
         if (file.size > maxPdfBytes) {
           setError(
-            `El archivo PDF supera el límite máximo de ${Math.round(
+            `El archivo PDF supera el límite de ${Math.round(
               maxPdfBytes / (1024 * 1024)
-            )} MB. Por favor comprímelo o sube una imagen del ejercicio.`
+            )} MB. Comprímelo o sube una imagen de menor tamaño.`
           );
           return;
         }
@@ -63,10 +110,13 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
         setIncluirImagen(false);
         setIsProcessing(true);
 
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = reader.result as string;
-          setPreview(base64);
+        try {
+          revokeCurrentObjectURL();
+          const objectUrl = URL.createObjectURL(file);
+          activeObjectURLRef.current = objectUrl;
+          setPreview(objectUrl);
+          setFileObject(file);
+
           setFileMeta({
             name: file.name,
             size: `${(file.size / 1024).toFixed(0)} KB`,
@@ -74,127 +124,149 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
             mimeType: 'application/pdf',
           });
 
-          try {
-            const arrayBuffer = await file.arrayBuffer();
-            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-            const pdfDoc = await loadingTask.promise;
+          // Read PDF directly via ArrayBuffer (no dataURL / base64 overhead in state)
+          const arrayBuffer = await file.arrayBuffer();
+          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+          const pdfDoc = await loadingTask.promise;
 
-            if (pdfDoc.numPages > maxPdfPages) {
-              setIsProcessing(false);
-              setError(
-                `El archivo PDF contiene más de ${maxPdfPages} páginas. Por favor sube únicamente las páginas relevantes del ejercicio.`
-              );
-              return;
-            }
-
-            let extractedText = '';
-            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-              const page = await pdfDoc.getPage(pageNum);
-              const textContent = await page.getTextContent();
-              const pageStr = textContent.items
-                .map((item: any) => item.str || '')
-                .join(' ');
-              if (pageStr.trim()) {
-                extractedText += pageStr + '\n\n';
-              }
-            }
-
-            const trimmed = extractedText.trim();
-            if (trimmed.length > 10) {
-              setIsProcessing(false);
-              onExtractedText?.(trimmed);
-              return;
-            }
-
-            onOcrFallbackNeeded?.(base64, 'application/pdf');
-          } catch (pdfErr) {
-            console.warn('PDF text extraction error, falling back to OCR:', pdfErr);
-            onOcrFallbackNeeded?.(base64, 'application/pdf');
+          if (pdfDoc.numPages > maxPdfPages) {
+            setIsProcessing(false);
+            setError(
+              `El archivo PDF contiene ${pdfDoc.numPages} páginas. El máximo permitido es de ${maxPdfPages} páginas.`
+            );
+            return;
           }
-        };
 
-        reader.onerror = () => {
-          setIsProcessing(false);
-          setError('Error al leer el archivo PDF.');
-        };
+          let extractedText = '';
+          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageStr = textContent.items.map((item: any) => item.str || '').join(' ');
+            if (pageStr.trim()) {
+              extractedText += pageStr + '\n\n';
+            }
+          }
 
-        reader.readAsDataURL(file);
+          const trimmed = extractedText.trim();
+          if (trimmed.length > 10) {
+            setIsProcessing(false);
+            onExtractedText?.(trimmed);
+            return;
+          }
+
+          // Generate base64 strictly on-demand for OCR fallback
+          const b64 = await getFileBase64(file);
+          onOcrFallbackNeeded?.(b64, 'application/pdf');
+        } catch (pdfErr: any) {
+          console.warn('PDF text extraction error, trying OCR fallback:', pdfErr);
+          try {
+            const b64 = await getFileBase64(file);
+            onOcrFallbackNeeded?.(b64, 'application/pdf');
+          } catch {
+            setIsProcessing(false);
+            setError('Error al procesar el archivo PDF.');
+          }
+        }
         return;
       }
 
-      // Photos / Images
+      // Photos / Images - Read natively via Image and Canvas to avoid memory bloat
       setIncluirImagen(true);
       setIsProcessing(true);
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const rawDataUrl = reader.result as string;
-        const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
 
-        img.onload = () => {
-          let { width, height } = img;
-          if (width > maxImageDim || height > maxImageDim) {
-            if (width > height) {
-              height = Math.round((height * maxImageDim) / width);
-              width = maxImageDim;
-            } else {
-              width = Math.round((width * maxImageDim) / height);
-              height = maxImageDim;
-            }
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-
-          if (ctx) {
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
-            const normalizedJpeg = canvas.toDataURL('image/jpeg', 0.85);
-            setPreview(normalizedJpeg);
-            setFileMeta({
-              name: file.name,
-              size: `${(file.size / 1024).toFixed(0)} KB`,
-              isPdf: false,
-              mimeType: 'image/jpeg',
-            });
-            onOcrFallbackNeeded?.(normalizedJpeg, 'image/jpeg');
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxImageDim || height > maxImageDim) {
+          if (width > height) {
+            height = Math.round((height * maxImageDim) / width);
+            width = maxImageDim;
           } else {
-            setPreview(rawDataUrl);
-            setFileMeta({
-              name: file.name,
-              size: `${(file.size / 1024).toFixed(0)} KB`,
-              isPdf: false,
-              mimeType: file.type || 'image/jpeg',
-            });
-            onOcrFallbackNeeded?.(rawDataUrl, file.type || 'image/jpeg');
+            width = Math.round((width * maxImageDim) / height);
+            height = maxImageDim;
           }
-        };
+        }
 
-        img.onerror = () => {
-          setPreview(rawDataUrl);
-          setFileMeta({
-            name: file.name,
-            size: `${(file.size / 1024).toFixed(0)} KB`,
-            isPdf: false,
-            mimeType: file.type || 'image/jpeg',
-          });
-          onOcrFallbackNeeded?.(rawDataUrl, file.type || 'image/jpeg');
-        };
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
 
-        img.src = rawDataUrl;
+        if (ctx) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Compress to low-footprint jpeg blob directly in memory
+          canvas.toBlob(
+            async (blob) => {
+              if (blob) {
+                const normalizedFile = new File([blob], file.name, { type: 'image/jpeg' });
+                revokeCurrentObjectURL();
+                const compressedUrl = URL.createObjectURL(normalizedFile);
+                activeObjectURLRef.current = compressedUrl;
+                setPreview(compressedUrl);
+                setFileObject(normalizedFile);
+
+                setFileMeta({
+                  name: file.name,
+                  size: `${(normalizedFile.size / 1024).toFixed(0)} KB (Optimizada)`,
+                  isPdf: false,
+                  mimeType: 'image/jpeg',
+                });
+
+                try {
+                  const b64 = await getFileBase64(normalizedFile);
+                  onOcrFallbackNeeded?.(b64, 'image/jpeg');
+                } catch {
+                  setIsProcessing(false);
+                  setError('Error al codificar la imagen para resolución.');
+                }
+              } else {
+                // Fallback to original
+                useOriginalFile();
+              }
+            },
+            'image/jpeg',
+            0.85
+          );
+        } else {
+          useOriginalFile();
+        }
       };
 
-      reader.onerror = () => {
-        setIsProcessing(false);
-        setError('Error al leer la imagen seleccionada.');
+      img.onerror = () => {
+        useOriginalFile();
       };
 
-      reader.readAsDataURL(file);
+      img.src = objectUrl;
+
+      async function useOriginalFile() {
+        revokeCurrentObjectURL();
+        const fallbackUrl = URL.createObjectURL(file);
+        activeObjectURLRef.current = fallbackUrl;
+        setPreview(fallbackUrl);
+        setFileObject(file);
+
+        setFileMeta({
+          name: file.name,
+          size: `${(file.size / 1024).toFixed(0)} KB`,
+          isPdf: false,
+          mimeType: file.type || 'image/jpeg',
+        });
+
+        try {
+          const b64 = await getFileBase64(file);
+          onOcrFallbackNeeded?.(b64, file.type || 'image/jpeg');
+        } catch {
+          setIsProcessing(false);
+          setError('Error al procesar la imagen.');
+        }
+      }
     },
-    [maxPdfBytes, maxPdfPages, maxImageDim, onExtractedText, onOcrFallbackNeeded]
+    [maxPdfBytes, maxPdfPages, maxImageDim, onExtractedText, onOcrFallbackNeeded, getFileBase64, revokeCurrentObjectURL]
   );
 
   const handleInputChange = useCallback(
@@ -210,6 +282,8 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
   return {
     preview,
     setPreview,
+    fileObject,
+    setFileObject,
     fileMeta,
     setFileMeta,
     isProcessing,

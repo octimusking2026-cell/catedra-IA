@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { useSession } from '../context/SessionContext';
 import { useQuota } from '../context/QuotaContext';
@@ -294,13 +294,13 @@ export const Perfil: React.FC = () => {
         ) : historialData && historialData.ejercicios.length > 0 ? (
           <div className="space-y-3">
             {historialData.ejercicios.map((ej) => (
-              <div
+              <Link
                 key={ej.id}
+                to={`/ejercicio/${ej.id}`}
                 onClick={() => {
-                  navigate(`/ejercicio/${ej.id}`);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl p-4 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl p-4 shadow-xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 outline-none"
               >
                 <div className="space-y-1.5 flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -342,7 +342,7 @@ export const Perfil: React.FC = () => {
                     <ArrowRight className="w-4 h-4" />
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
 
             {/* Pagination Controls */}

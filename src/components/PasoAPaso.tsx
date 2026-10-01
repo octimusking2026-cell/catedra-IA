@@ -15,8 +15,11 @@ export const PasoAPaso: React.FC<PasoAPasoProps> = ({ paso, totalPasos }) => {
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:border-slate-300 transition-colors">
       {/* Header bar */}
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full text-left p-4 sm:p-5 flex items-center justify-between gap-3 bg-slate-50/50 hover:bg-slate-50 border-b border-slate-100 transition-colors"
+        aria-expanded={expanded}
+        aria-controls={`paso-body-${paso.numero}`}
+        className="w-full text-left p-4 sm:p-5 flex items-center justify-between gap-3 bg-slate-50/50 hover:bg-slate-50 border-b border-slate-100 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 outline-none"
       >
         <div className="flex items-center gap-3.5">
           <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-bold text-sm flex items-center justify-center shadow-xs">
@@ -39,7 +42,7 @@ export const PasoAPaso: React.FC<PasoAPasoProps> = ({ paso, totalPasos }) => {
 
       {/* Body content */}
       {expanded && (
-        <div className="p-4 sm:p-6 space-y-4">
+        <div id={`paso-body-${paso.numero}`} role="region" aria-label={`Detalle del Paso ${paso.numero}`} className="p-4 sm:p-6 space-y-4">
           {/* Explanation */}
           <div className="text-sm text-slate-700 leading-relaxed font-sans">
             <p>{paso.explicacion}</p>

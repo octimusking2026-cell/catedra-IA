@@ -19,10 +19,21 @@ interface CatalogContextType {
   selectedCatedra: Catedra | null;
   setSelectedCatedra: React.Dispatch<React.SetStateAction<Catedra | null>>;
   ejercicios: EjercicioConDetalle[];
-  refreshEjercicios: (filters?: { catedra_id?: string; materia_id?: string; tema?: string; query?: string; orden?: 'antiguos' | 'recientes' }) => Promise<void>;
+  refreshEjercicios: (filters?: {
+    catedra_id?: string;
+    materia_id?: string;
+    tema?: string;
+    query?: string;
+    orden?: 'antiguos' | 'recientes';
+    page?: number;
+    limit?: number;
+  }) => Promise<void>;
   refreshCatalog: () => Promise<void>;
   loadingCatalog: boolean;
   setEjercicios: React.Dispatch<React.SetStateAction<EjercicioConDetalle[]>>;
+  totalEjercicios: number;
+  totalPages: number;
+  currentPage: number;
 }
 
 const CatalogContext = createContext<CatalogContextType | null>(null);
@@ -41,6 +52,11 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [ejercicios, setEjercicios] = useState<EjercicioConDetalle[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
 
+  // Pagination states
+  const [totalEjercicios, setTotalEjercicios] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+
   const setSelectedCarrera = useCallback((carrera: Carrera | null) => {
     setSelectedCarreraState(carrera);
     if (carrera) {
@@ -52,21 +68,33 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  const refreshEjercicios = useCallback(async (filters?: { catedra_id?: string; materia_id?: string; tema?: string; query?: string; orden?: 'antiguos' | 'recientes' }) => {
+  const refreshEjercicios = useCallback(async (filters?: {
+    catedra_id?: string;
+    materia_id?: string;
+    tema?: string;
+    query?: string;
+    orden?: 'antiguos' | 'recientes';
+    page?: number;
+    limit?: number;
+  }) => {
     if (!authUser) return;
     try {
-      const ejs = await api.getEjercicios(filters);
-      setEjercicios(ejs);
+      const res = await api.getEjercicios(filters);
+      setEjercicios(res.ejercicios);
+      setTotalEjercicios(res.total);
+      setCurrentPage(res.page);
+      setTotalPages(res.totalPages);
     } catch (err) {
       console.error('Error refrescando ejercicios:', err);
     }
   }, [authUser]);
 
+  // Load only core metadata initially (carreras, facultades)
   const loadInitialCatalog = useCallback(async () => {
     if (!authUser) return;
     setLoadingCatalog(true);
     try {
-      const [cars, facs, mats, cats, ejs] = await Promise.all([
+      const [cars, facs] = await Promise.all([
         api.getCarreras().catch((err) => {
           console.warn('[CatalogContext] Error al cargar carreras:', err);
           return [];
@@ -75,25 +103,10 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
           console.warn('[CatalogContext] Error al cargar facultades:', err);
           return [];
         }),
-        api.getMaterias().catch((err) => {
-          console.warn('[CatalogContext] Error al cargar materias:', err);
-          return [];
-        }),
-        api.getCatedras().catch((err) => {
-          console.warn('[CatalogContext] Error al cargar cátedras:', err);
-          return [];
-        }),
-        api.getEjercicios().catch((err) => {
-          console.warn('[CatalogContext] Error al cargar ejercicios:', err);
-          return [];
-        }),
       ]);
 
       setCarreras(cars);
       setFacultades(facs);
-      setMaterias(mats);
-      setCatedras(cats);
-      setEjercicios(ejs);
 
       let initialCarrera: Carrera | null = null;
       try {
@@ -114,27 +127,76 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (facs.length > 0) {
         setSelectedFacultad(facs[0]);
       }
-
-      // Initial materia and catedra selection
-      if (initialCarrera) {
-        const validMats = mats.filter(
-          (m) => m.carreras_ids && m.carreras_ids.includes(initialCarrera.id)
-        );
-        const firstMat = validMats[0] || mats[0];
-        if (firstMat) {
-          setSelectedMateria(firstMat);
-          const matCats = cats.filter((c) => c.materia_id === firstMat.id);
-          const firstCat = matCats[0] || cats[0];
-          if (firstCat) setSelectedCatedra(firstCat);
-        }
-      }
     } catch (err) {
-      console.error('Error cargando catálogo académico:', err);
+      console.error('Error cargando catálogo académico inicial:', err);
     } finally {
       setLoadingCatalog(false);
     }
   }, [authUser]);
 
+  // Load materias ON-DEMAND whenever selectedCarrera changes
+  useEffect(() => {
+    if (!authUser || !selectedCarrera) return;
+
+    let isMounted = true;
+    const loadMaterias = async () => {
+      setLoadingCatalog(true);
+      try {
+        const mats = await api.getMaterias({ carrera_id: selectedCarrera.id }).catch(() => []);
+        if (!isMounted) return;
+        setMaterias(mats);
+
+        const validMats = mats.filter(
+          (m) => m.carreras_ids && m.carreras_ids.includes(selectedCarrera.id)
+        );
+        const firstMat = validMats[0] || mats[0] || null;
+        setSelectedMateria(firstMat);
+      } catch (err) {
+        console.error('[CatalogContext] Error loading on-demand materias:', err);
+      } finally {
+        if (isMounted) setLoadingCatalog(false);
+      }
+    };
+
+    loadMaterias();
+    return () => {
+      isMounted = false;
+    };
+  }, [authUser, selectedCarrera]);
+
+  // Load catedras ON-DEMAND whenever selectedMateria changes (never load all of them)
+  useEffect(() => {
+    if (!authUser) return;
+    if (!selectedMateria) {
+      setCatedras([]);
+      setSelectedCatedra(null);
+      return;
+    }
+
+    let isMounted = true;
+    const loadCatedras = async () => {
+      setLoadingCatalog(true);
+      try {
+        const cats = await api.getCatedras(selectedMateria.id).catch(() => []);
+        if (!isMounted) return;
+        setCatedras(cats);
+
+        const firstCat = cats[0] || null;
+        setSelectedCatedra(firstCat);
+      } catch (err) {
+        console.error('[CatalogContext] Error loading on-demand catedras:', err);
+      } finally {
+        if (isMounted) setLoadingCatalog(false);
+      }
+    };
+
+    loadCatedras();
+    return () => {
+      isMounted = false;
+    };
+  }, [authUser, selectedMateria]);
+
+  // Setup/Tear-down on login status
   useEffect(() => {
     if (authUser) {
       loadInitialCatalog();
@@ -149,6 +211,9 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setSelectedFacultad(null);
       setSelectedMateria(null);
       setSelectedCatedra(null);
+      setTotalEjercicios(0);
+      setTotalPages(0);
+      setCurrentPage(1);
     }
   }, [authUser, loadInitialCatalog]);
 
@@ -174,6 +239,9 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
         refreshCatalog: loadInitialCatalog,
         loadingCatalog,
         setEjercicios,
+        totalEjercicios,
+        totalPages,
+        currentPage,
       }}
     >
       {children}

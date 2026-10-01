@@ -174,7 +174,7 @@ export const AyudaPrivacidad: React.FC = () => {
               Derecho de Supresión (Borrado de Datos)
             </h4>
             <p className="text-xs text-rose-800 leading-relaxed">
-              Esta acción borrará de Firestore tu perfil, todos tus ejercicios subidos, tus votos, comentarios y registros asociados de cuotas.
+              Esta acción eliminará de forma irreversible tu perfil, todos tus ejercicios y resoluciones asociadas, reportes, mensajes, votos, registros de cuotas y tu cuenta de Firebase Authentication.
             </p>
           </div>
 
@@ -229,11 +229,11 @@ export const AyudaPrivacidad: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-200 font-mono">
-              Se eliminarán de Firestore:
+              Se eliminarán de forma permanente:
               <br />• Tu perfil de usuario ({usuario?.email})
-              <br />• Todos tus ejercicios subidos
-              <br />• Tus votos y comentarios registrados
-              <br />• Tus contadores de uso diario
+              <br />• Tu cuenta de Firebase Authentication
+              <br />• Tus ejercicios subidos y sus resoluciones
+              <br />• Tus votos, reportes, feedback y cuotas diarias
             </p>
 
             {deleteError && (

@@ -1,6 +1,6 @@
 import { db } from './client';
 import { Ejercicio } from '../../src/types';
-import { SEED_EJERCICIOS, SEED_CATEDRAS } from '../../src/data/seed';
+import { SEED_EJERCICIOS } from '../../src/data/seed';
 
 const COLLECTION = 'ejercicios';
 
@@ -32,16 +32,19 @@ export async function getEjercicios(filters?: {
 
   if (filters?.catedra_id) {
     queryRef = queryRef.where('catedra_id', '==', filters.catedra_id);
+  } else if (filters?.materia_id) {
+    // Get catedras for materia_id directly from Firestore
+    const catsSnapshot = await db.collection('catedras').where('materia_id', '==', filters.materia_id).get();
+    const catedraIds = catsSnapshot.docs.map((doc) => doc.id);
+    if (catedraIds.length > 0) {
+      queryRef = queryRef.where('catedra_id', 'in', catedraIds.slice(0, 30));
+    } else {
+      return [];
+    }
   }
 
   const snapshot = await queryRef.get();
   let items = snapshot.docs.map((doc) => doc.data() as Ejercicio);
-
-  // If materia_id is specified (and not filtered at queryRef level by catedra_id)
-  if (filters?.materia_id && !filters?.catedra_id) {
-    const validCatedraIds = SEED_CATEDRAS.filter((c) => c.materia_id === filters.materia_id).map((c) => c.id);
-    items = items.filter((e) => validCatedraIds.includes(e.catedra_id));
-  }
 
   // Filter by user ownership and subject sharing
   // Return only MY exercises PLUS shared exercises ('compartido' or default)
@@ -72,6 +75,85 @@ export async function getEjercicios(filters?: {
   items.sort((a, b) => new Date(b.fecha_subida).getTime() - new Date(a.fecha_subida).getTime());
 
   return items;
+}
+
+export async function getEjerciciosPaginated(filters?: {
+  catedra_id?: string;
+  materia_id?: string;
+  tema?: string;
+  query?: string;
+  currentUserId?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{
+  ejercicios: Ejercicio[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  const page = filters?.page ? Math.max(1, filters.page) : 1;
+  const limit = filters?.limit ? Math.max(1, filters.limit) : 10;
+
+  let queryRef: FirebaseFirestore.Query = db.collection(COLLECTION);
+
+  if (filters?.catedra_id) {
+    queryRef = queryRef.where('catedra_id', '==', filters.catedra_id);
+  } else if (filters?.materia_id) {
+    // Get catedras for materia_id directly from Firestore
+    const catsSnapshot = await db.collection('catedras').where('materia_id', '==', filters.materia_id).get();
+    const catedraIds = catsSnapshot.docs.map((doc) => doc.id);
+    if (catedraIds.length > 0) {
+      queryRef = queryRef.where('catedra_id', 'in', catedraIds.slice(0, 30));
+    } else {
+      return { ejercicios: [], total: 0, page, limit, totalPages: 0 };
+    }
+  }
+
+  if (filters?.tema && filters.tema !== 'todos') {
+    queryRef = queryRef.where('tema', '==', filters.tema);
+  }
+
+  // Fetch directly from Firestore without orderBy to avoid composite index requirements, then sort in-memory
+  const snap = await queryRef.get();
+  const docs = snap.docs;
+
+  let items = docs.map((doc) => doc.data() as Ejercicio);
+
+  if (filters?.currentUserId) {
+    const uid = filters.currentUserId;
+    items = items.filter((e) => {
+      const isMine = e.usuario_id_subio === uid;
+      const isShared = e.visibilidad === 'compartido' || !e.visibilidad;
+      return isMine || isShared;
+    });
+  }
+
+  if (filters?.query) {
+    const q = filters.query.toLowerCase();
+    items = items.filter(
+      (e) =>
+        (e.titulo && e.titulo.toLowerCase().includes(q)) ||
+        (e.texto_ocr && e.texto_ocr.toLowerCase().includes(q)) ||
+        (e.tema && e.tema.toLowerCase().includes(q))
+    );
+  }
+
+  // Sort by fecha_subida descending (guarantees stable, correct order)
+  items.sort((a, b) => new Date(b.fecha_subida || 0).getTime() - new Date(a.fecha_subida || 0).getTime());
+
+  const total = items.length;
+  const totalPages = Math.ceil(total / limit);
+  const startIndex = (page - 1) * limit;
+  const paginatedItems = items.slice(startIndex, startIndex + limit);
+
+  return {
+    ejercicios: paginatedItems,
+    total,
+    page,
+    limit,
+    totalPages,
+  };
 }
 
 export async function getEjerciciosByUsuario(usuarioId: string): Promise<Ejercicio[]> {
