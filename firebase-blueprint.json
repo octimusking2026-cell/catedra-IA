@@ -1,0 +1,224 @@
+{
+  "entities": {
+    "Facultad": {
+      "title": "Facultad",
+      "description": "Facultad o unidad académica universitaria (ej: Facultad de Ciencias Forestales - UNaM).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "nombre": { "type": "string", "maxLength": 256 },
+        "universidad": { "type": "string", "maxLength": 256 },
+        "siglas": { "type": "string", "maxLength": 64 },
+        "logo_color": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["id", "nombre", "universidad", "siglas"]
+    },
+    "Carrera": {
+      "title": "Carrera",
+      "description": "Carrera universitaria de grado (ej: Ingeniería Forestal - FCF UNaM).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "nombre": { "type": "string", "maxLength": 256 },
+        "facultad_id": { "type": "string", "maxLength": 128 },
+        "siglas": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "nombre", "facultad_id", "siglas"]
+    },
+    "Materia": {
+      "title": "Materia",
+      "description": "Asignatura del plan de estudios de la carrera universitaria.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "nombre": { "type": "string", "maxLength": 256 },
+        "facultad_id": { "type": "string", "maxLength": 128 },
+        "codigo": { "type": "string", "maxLength": 64 },
+        "anio": { "type": "number" },
+        "cuatrimestre": { "type": "string", "maxLength": 32 },
+        "carreras_ids": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "nombre", "facultad_id", "anio", "cuatrimestre"]
+    },
+    "Catedra": {
+      "title": "Catedra",
+      "description": "Cátedra docente con sus criterios metodológicos, temas y pautas de examen.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "materia_id": { "type": "string", "maxLength": 128 },
+        "nombre": { "type": "string", "maxLength": 256 },
+        "cuatrimestre": { "type": "string", "maxLength": 64 },
+        "estilo_metodologico": { "type": "string", "maxLength": 4000 },
+        "temas": { "type": "array", "items": { "type": "string" } },
+        "criterios_clave": { "type": "array", "items": { "type": "string" } },
+        "consejos_examen": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "materia_id", "nombre", "cuatrimestre", "estilo_metodologico", "temas", "criterios_clave"]
+    },
+    "Usuario": {
+      "title": "Usuario",
+      "description": "Perfil anónimo o autenticado de estudiante en CátedraIA.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "nombre": { "type": "string", "maxLength": 128 },
+        "fecha_registro": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "email", "nombre", "fecha_registro"]
+    },
+    "Ejercicio": {
+      "title": "Ejercicio",
+      "description": "Ejercicio académico subido por estudiantes para resolver con IA según cátedra.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "catedra_id": { "type": "string", "maxLength": 128 },
+        "usuario_id_subio": { "type": "string", "maxLength": 128 },
+        "usuario_nombre": { "type": "string", "maxLength": 128 },
+        "titulo": { "type": "string", "maxLength": 256 },
+        "imagen_url": { "type": "string", "maxLength": 2048 },
+        "texto_ocr": { "type": "string", "maxLength": 30000 },
+        "tema": { "type": "string", "maxLength": 128 },
+        "aprobado": { "type": "boolean" },
+        "fecha_subida": { "type": "string", "maxLength": 64 },
+        "hash_enunciado": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "catedra_id", "usuario_id_subio", "titulo", "texto_ocr", "tema", "aprobado", "fecha_subida"]
+    },
+    "Resolucion": {
+      "title": "Resolucion",
+      "description": "Resolución metodológica paso a paso generada por IA según la cátedra.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "ejercicio_id": { "type": "string", "maxLength": 128 },
+        "resultado_final": { "type": "string", "maxLength": 10000 },
+        "resumen_criterio": { "type": "string", "maxLength": 5000 },
+        "votos_positivos": { "type": "number" },
+        "votos_negativos": { "type": "number" },
+        "estado": { "type": "string", "enum": ["aprobada", "en_revision"] },
+        "fecha_generada": { "type": "string", "maxLength": 64 },
+        "hash_enunciado": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "ejercicio_id", "resultado_final", "resumen_criterio", "votos_positivos", "votos_negativos", "estado", "fecha_generada"]
+    },
+    "Voto": {
+      "title": "Voto",
+      "description": "Voto individual emitido por un usuario sobre la conformidad metodológica de una resolución.",
+      "type": "object",
+      "properties": {
+        "anon_user_id": { "type": "string", "maxLength": 128 },
+        "resolucion_id": { "type": "string", "maxLength": 128 },
+        "tipo": { "type": "string", "enum": ["positivo", "negativo"] },
+        "comentario": { "type": "string", "maxLength": 2000 },
+        "fecha": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["anon_user_id", "resolucion_id", "tipo", "fecha"]
+    },
+    "UsoDiario": {
+      "title": "UsoDiario",
+      "description": "Contador atómico de cuota diaria de consultas de uso justo por usuario.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "maxLength": 128 },
+        "fecha": { "type": "string", "maxLength": 32 },
+        "cantidad": { "type": "number" },
+        "ultima_actualizacion": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["user_id", "fecha", "cantidad"]
+    },
+    "AiLog": {
+      "title": "AiLog",
+      "description": "Registro de telemetría y consumo de tokens de Gemini para auditoría de costos.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "fecha": { "type": "string", "maxLength": 32 },
+        "tokens_in": { "type": "number" },
+        "tokens_out": { "type": "number" },
+        "latencia_ms": { "type": "number" },
+        "error": { "type": "string", "maxLength": 2000 },
+        "timestamp": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "fecha", "tokens_in", "tokens_out", "latencia_ms", "timestamp"]
+    },
+    "UsoTokensDiario": {
+      "title": "UsoTokensDiario",
+      "description": "Consumo diario agregado global de tokens de Gemini para tope de costos.",
+      "type": "object",
+      "properties": {
+        "fecha": { "type": "string", "maxLength": 32 },
+        "tokens_usados": { "type": "number" },
+        "ultima_actualizacion": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["fecha", "tokens_usados"]
+    },
+    "Feedback": {
+      "title": "Feedback",
+      "description": "Comentario, reporte de error o sugerencia enviado por los usuarios.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "usuario_nombre": { "type": "string", "maxLength": 128 },
+        "usuario_email": { "type": "string", "maxLength": 256 },
+        "mensaje": { "type": "string", "maxLength": 5000 },
+        "pantalla": { "type": "string", "maxLength": 128 },
+        "fecha": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "mensaje", "pantalla", "fecha"]
+    }
+  },
+  "firestore": {
+    "/facultades/{facultadId}": {
+      "schema": "Facultad",
+      "description": "Colección de facultades universitarias."
+    },
+    "/carreras/{carreraId}": {
+      "schema": "Carrera",
+      "description": "Colección de carreras de grado."
+    },
+    "/materias/{materiaId}": {
+      "schema": "Materia",
+      "description": "Colección de materias del plan de estudios."
+    },
+    "/catedras/{catedraId}": {
+      "schema": "Catedra",
+      "description": "Colección de cátedras y criterios metodológicos."
+    },
+    "/usuarios/{userId}": {
+      "schema": "Usuario",
+      "description": "Colección de perfiles de usuario."
+    },
+    "/ejercicios/{ejercicioId}": {
+      "schema": "Ejercicio",
+      "description": "Colección de ejercicios académicos subidos."
+    },
+    "/resoluciones/{resolucionId}": {
+      "schema": "Resolucion",
+      "description": "Colección de resoluciones metodológicas paso a paso."
+    },
+    "/votos/{votoId}": {
+      "schema": "Voto",
+      "description": "Colección de votos sobre resoluciones (id = resolucionId_userId)."
+    },
+    "/uso_diario/{usoId}": {
+      "schema": "UsoDiario",
+      "description": "Contador de cuota diaria de uso justo por usuario."
+    },
+    "/ai_log/{logId}": {
+      "schema": "AiLog",
+      "description": "Registro de llamadas y consumo de tokens a Gemini."
+    },
+    "/uso_tokens_diario/{fecha}": {
+      "schema": "UsoTokensDiario",
+      "description": "Tope diario global de tokens de Gemini consumidos."
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "Colección de comentarios y sugerencias recibidos de los usuarios."
+    }
+  }
+}

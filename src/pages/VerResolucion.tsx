@@ -1,51 +1,111 @@
-import React, { useState, useEffect } from 'react';
-import { EjercicioConDetalle, Resolucion } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { EjercicioConDetalle, Resolucion, PasoResolucion } from '../types';
 import { PasoAPaso } from '../components/PasoAPaso';
 import { MathRenderer } from '../components/MathRenderer';
 import { api } from '../services/api';
+import { useQuota } from '../context/QuotaContext';
+import { useSession } from '../context/SessionContext';
+import { useCatalog } from '../context/CatalogContext';
+import { SEO } from '../components/SEO';
 import {
   ArrowLeft,
   ThumbsUp,
   ThumbsDown,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   BookOpen,
   Share2,
-  Copy,
   Check,
   GraduationCap,
-  MessageSquare,
   Sparkles,
   Loader2,
+  ShieldCheck,
+  Compass,
+  Lightbulb,
+  FileQuestion,
+  Clock,
+  History,
+  Flag,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 interface VerResolucionProps {
-  ejercicioId: string;
-  onBack: () => void;
-  onGoToSubir: () => void;
+  ejercicioId?: string;
 }
 
-export const VerResolucion: React.FC<VerResolucionProps> = ({
-  ejercicioId,
-  onBack,
-  onGoToSubir,
-}) => {
+export const VerResolucion: React.FC<VerResolucionProps> = ({ ejercicioId: propEjercicioId }) => {
+  const { id: paramEjercicioId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { refreshQuota } = useQuota();
+  const { usuario } = useSession();
+  const { refreshEjercicios } = useCatalog();
+
+  const activeId = paramEjercicioId || propEjercicioId || '';
+
   const [ejercicio, setEjercicio] = useState<EjercicioConDetalle | null>(null);
   const [resolucion, setResolucion] = useState<Resolucion | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSolving, setIsSolving] = useState(false);
-  const [solvingPhase, setSolvingPhase] = useState('');
-  const [solveError, setSolveError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [streamStatusMsg, setStreamStatusMsg] = useState('');
+  const [pasosNuevos, setPasosNuevos] = useState<PasoResolucion[]>([]);
+  const [regenError, setRegenError] = useState<string | null>(null);
   const [hasVoted, setHasVoted] = useState<'positivo' | 'negativo' | null>(null);
   const [voteFeedback, setVoteFeedback] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [discrepancyNote, setDiscrepancyNote] = useState('');
 
-  const loadData = async () => {
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportMotivo, setReportMotivo] = useState('Resolución errónea o imprecisa');
+  const [reportDetalle, setReportDetalle] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
+
+  const handleDeleteEjercicio = async () => {
+    if (!ejercicio) return;
+    if (!window.confirm('¿Seguro que querés borrar este ejercicio? Esta acción eliminará el ejercicio y su resolución.')) return;
+    setIsDeleting(true);
+    try {
+      await api.borrarEjercicio(ejercicio.id);
+      await refreshEjercicios();
+      navigate('/');
+    } catch (err: any) {
+      alert(err.message || 'Error al eliminar el ejercicio');
+      setIsDeleting(false);
+    }
+  };
+
+  const handleSendReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ejercicio) return;
+    setIsSubmittingReport(true);
+    try {
+      await api.reportarEjercicio(ejercicio.id, reportMotivo, reportDetalle);
+      setReportSuccess(true);
+      setTimeout(() => {
+        setReportSuccess(false);
+        setShowReportModal(false);
+        setReportDetalle('');
+      }, 2000);
+    } catch (err: any) {
+      alert(err.message || 'Error al registrar el reporte.');
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
+  const loadData = useCallback(async () => {
+    if (!activeId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await api.getEjercicioDetalle(ejercicioId);
+      const data = await api.getEjercicioDetalle(activeId);
       setEjercicio(data);
       if (data.resolucion) {
         setResolucion(data.resolucion);
@@ -56,46 +116,56 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
           setDiscrepancyNote(data.mi_voto.comentario);
         }
       }
-    } catch (err) {
-      console.error('Error al cargar ejercicio:', err);
+    } catch (err: any) {
+      console.error('Error cargando ejercicio:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeId]);
 
   useEffect(() => {
-    if (ejercicioId) {
-      loadData();
-    }
-  }, [ejercicioId]);
+    loadData();
+  }, [loadData]);
 
-  const handleSolveExercise = async () => {
+  const handleRegenerate = async () => {
     if (!ejercicio) return;
-    setIsSolving(true);
-    setSolveError(null);
-
-    setSolvingPhase(`Aplicando criterios metodológicos de ${ejercicio.catedra?.nombre || 'la cátedra'}...`);
-    const t1 = setTimeout(() => {
-      setSolvingPhase('Generando desarrollo paso a paso y comprobaciones de examen...');
-    }, 1500);
+    setIsRegenerating(true);
+    setRegenError(null);
+    setPasosNuevos([]);
+    setStreamStatusMsg('Iniciando resolución con IA...');
 
     try {
-      const res = await api.generarResolucion({
-        ejercicio_id: ejercicio.id,
-        catedra_id: ejercicio.catedra_id,
-        enunciado: ejercicio.texto_ocr,
-        titulo: ejercicio.titulo,
-        tema: ejercicio.tema,
-      });
-      clearTimeout(t1);
-      setResolucion(res);
-      setEjercicio((prev) => (prev ? { ...prev, resolucion: res } : null));
+      await api.generarResolucionStream(
+        {
+          ejercicio_id: ejercicio.id,
+          catedra_id: ejercicio.catedra_id,
+          enunciado: ejercicio.texto_ocr,
+          titulo: ejercicio.titulo,
+          tema: ejercicio.tema,
+          incluir_imagen: false,
+        },
+        {
+          onPaso: (p) => {
+            setPasosNuevos((prev) => {
+              if (prev.some((existing) => existing.numero === p.numero)) return prev;
+              return [...prev, p];
+            });
+          },
+          onStatus: (st) => {
+            setStreamStatusMsg(st.mensaje);
+          },
+        }
+      );
+
+      const updated = await api.getEjercicioDetalle(ejercicio.id);
+      setEjercicio(updated);
+      setResolucion(updated.resolucion || null);
+      await refreshQuota();
     } catch (err: any) {
-      clearTimeout(t1);
-      setSolveError(err.message || 'No se pudo resolver el ejercicio en este momento. Reintentá en unos instantes.');
+      setRegenError(err.message || 'Se cortó la conexión al resolver. Podés reintentar sin perder cuota.');
     } finally {
-      setIsSolving(false);
-      setSolvingPhase('');
+      setIsRegenerating(false);
+      setStreamStatusMsg('');
     }
   };
 
@@ -123,14 +193,53 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
     }
   };
 
-  const handleShare = () => {
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
+  };
+
+  const handleShare = async () => {
     if (!ejercicio) return;
-    const shareText = `*${ejercicio.titulo}* - Resuelto con el criterio de ${
-      ejercicio.catedra?.nombre || 'la cátedra'
-    } en CátedraIA.\nResultado: ${resolucion?.resultado_final || ''}`;
-    navigator.clipboard.writeText(shareText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    const shareUrl = `${window.location.origin}/resolucion/${ejercicio.id}`;
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: ejercicio.titulo || 'Ejercicio de Cátedra',
+          text: `Resolución de ${ejercicio.catedra?.nombre || 'Cátedra'}: ${ejercicio.titulo || 'Paso a paso'}`,
+          url: shareUrl,
+        });
+        return;
+      } catch (err: any) {
+        // If aborted/cancelled by user, do not fallback to copy
+        if (err?.name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
+    // Fallback: Copy direct URL to clipboard
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = shareUrl;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch (err) {
+      console.warn('Fallback clipboard copy failed:', err);
+    }
   };
 
   if (loading) {
@@ -149,8 +258,8 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
       <div className="py-16 text-center space-y-4">
         <h3 className="text-lg font-bold text-slate-800">Ejercicio no encontrado</h3>
         <button
-          onClick={onBack}
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold"
+          onClick={() => navigate('/')}
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold cursor-pointer"
         >
           Volver al Feed
         </button>
@@ -158,49 +267,153 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
     );
   }
 
-  const isEnRevision = resolucion?.estado === 'en_revision';
-
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
+      <SEO
+        title={ejercicio ? `${ejercicio.titulo}` : 'Resolución de Ejercicio'}
+        description={
+          ejercicio
+            ? `Resolución paso a paso del ejercicio "${ejercicio.titulo}" (${ejercicio.tema}) para ${ejercicio.materia?.nombre || 'la materia'}.`
+            : 'Resolución deductiva paso a paso con formulas en LaTeX.'
+        }
+      />
       {/* Top back navigation */}
       <div className="flex items-center justify-between gap-4">
         <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+          onClick={handleBack}
+          className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Volver al banco de ejercicios</span>
         </button>
 
-        <button
-          onClick={handleShare}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs transition-colors"
-        >
-          {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="text-emerald-700">¡Copiado al portapapeles!</span>
-            </>
-          ) : (
-            <>
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Compartir con compañeros</span>
-            </>
+        <div className="flex items-center gap-2">
+          {/* Delete exercise if owner or admin */}
+          {(ejercicio.es_mio || usuario?.es_admin) && (
+            <button
+              onClick={handleDeleteEjercicio}
+              disabled={isDeleting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-rose-200 text-xs font-semibold text-rose-600 hover:bg-rose-50 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              title="Borrar mi ejercicio"
+            >
+              {isDeleting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              )}
+              <span className="hidden sm:inline">Borrar ejercicio</span>
+            </button>
           )}
-        </button>
+
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:text-amber-700 hover:bg-amber-50 shadow-xs transition-colors cursor-pointer"
+            title="Reportar problema en el ejercicio o resolución"
+          >
+            <Flag className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Reportar</span>
+          </button>
+
+          <button
+            onClick={handleShare}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs transition-colors cursor-pointer"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="text-emerald-700">¡Link copiado al portapapeles!</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Compartir link</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Review Warning if negative votes threshold reached */}
-      {isEnRevision && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-3 shadow-xs">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <span className="font-bold text-amber-950">Resolución en revisión comunitaria:</span>
-            <p className="leading-relaxed">
-              Varios estudiantes de esta cátedra señalaron discrepancias con el método exigido por el profesor.
-              La resolución está siendo revisada por los moderadores estudiantiles.
-            </p>
+      {/* Resolution Verification Status Banner */}
+      {resolucion && (
+        resolucion.estado === 'verificada' ? (
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 flex items-start gap-3 shadow-xs">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold text-emerald-950">Resolución Verificada por la Comunidad:</span>
+              <p className="leading-relaxed text-emerald-900">
+                Alcanzó 3 o más votos positivos netos de estudiantes. El procedimiento coincide con el método estándar.
+              </p>
+            </div>
           </div>
+        ) : resolucion.estado === 'en_revision' ? (
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-3 shadow-xs">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold text-amber-950">Resolución En Revisión Comunitaria:</span>
+              <p className="leading-relaxed text-amber-900">
+                Dos o más estudiantes señalaron discrepancias con el procedimiento. Revisá las observaciones o dejá tu voto para contrastar.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 flex items-start gap-3 shadow-xs">
+            <Clock className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold text-slate-900">Resolución Sin Verificar por Pares:</span>
+              <p className="leading-relaxed text-slate-600">
+                Esta resolución fue generada por IA. Requiere +3 votos positivos netos de compañeros de la cátedra para pasar al estado Verificada.
+              </p>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Live streaming steps rendering when regenerating */}
+      {(isRegenerating || pasosNuevos.length > 0) && (
+        <div className="bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
+              <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+              <span>Generando Nueva Versión Paso a Paso en Tiempo Real...</span>
+            </div>
+            {isRegenerating && <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />}
+          </div>
+
+          {streamStatusMsg && (
+            <p className="text-xs text-slate-300 font-medium animate-pulse">
+              {streamStatusMsg}
+            </p>
+          )}
+
+          <div className="space-y-3">
+            {pasosNuevos.map((paso, idx) => (
+              <PasoAPaso
+                key={`streaming-paso-${activeId || ejercicio?.id || 'nuevo'}-${idx}`}
+                paso={paso}
+                totalPasos={pasosNuevos.length}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Regeneration error with Retry button */}
+      {regenError && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-semibold">No se pudo regenerar la resolución:</span>
+              <p>{regenError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shrink-0 shadow-xs transition-colors"
+          >
+            Reintentar
+          </button>
         </div>
       )}
 
@@ -239,19 +452,117 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
         )}
       </div>
 
+      {/* AI Disclaimer & Confidence Badge */}
+      {resolucion && (
+        <div className="space-y-3">
+          {/* Prominent AI Generation Notice */}
+          <div className="p-3.5 bg-amber-50 border border-amber-300/80 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5 font-medium">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Generado por IA:</strong> verifica siempre los resultados y el procedimiento con tu apunte o bibliografía de la materia.
+              </span>
+            </div>
+
+            {/* Confidence badge */}
+            {resolucion.confianza && (
+              <div
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[11px] shrink-0 border ${
+                  resolucion.confianza === 'alta'
+                    ? 'bg-emerald-100/80 text-emerald-900 border-emerald-300'
+                    : resolucion.confianza === 'media'
+                    ? 'bg-amber-100/90 text-amber-950 border-amber-300'
+                    : 'bg-rose-100/80 text-rose-900 border-rose-300'
+                }`}
+                title={resolucion.motivo_confianza || ''}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>
+                  Confianza {resolucion.confianza.toUpperCase()}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Reason for confidence if not high */}
+          {resolucion.motivo_confianza && resolucion.confianza !== 'alta' && (
+            <div className="text-[11px] text-slate-500 bg-slate-50 px-3.5 py-2 rounded-lg border border-slate-200">
+              <span className="font-semibold text-slate-700">Nota de confianza: </span>
+              {resolucion.motivo_confianza}
+            </div>
+          )}
+
+          {/* Fallback or specific warning if any */}
+          {resolucion.advertencia && (
+            <div className="flex items-center gap-2.5 text-xs text-amber-900 bg-amber-50 border border-amber-200/80 px-3.5 py-2.5 rounded-xl font-medium">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Aviso: {resolucion.advertencia}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Initial Understanding & Strategy Section */}
+      {resolucion && (resolucion.entendimiento || resolucion.estrategia) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {resolucion.entendimiento && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-900 uppercase tracking-wider">
+                <FileQuestion className="w-4 h-4 text-blue-600" />
+                <span>Datos, Incógnitas y Conceptos</span>
+              </div>
+              <div className="text-xs sm:text-sm text-slate-700 leading-relaxed font-sans">
+                <MathRenderer text={resolucion.entendimiento} />
+              </div>
+            </div>
+          )}
+
+          {resolucion.estrategia && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 uppercase tracking-wider">
+                <Compass className="w-4 h-4 text-indigo-600" />
+                <span>Estrategia de Resolución</span>
+              </div>
+              <div className="text-xs sm:text-sm text-slate-700 leading-relaxed font-sans">
+                <MathRenderer text={resolucion.estrategia} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Assumed Conditions / Supuestos if any */}
+      {resolucion?.supuestos && resolucion.supuestos.length > 0 && (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-2 shadow-xs">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <Lightbulb className="w-4 h-4 text-amber-500" />
+            <span>Supuestos y Condiciones de Contorno</span>
+          </div>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
+            {resolucion.supuestos.map((supuesto, idx) => (
+              <li key={idx} className="flex items-start gap-1.5">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>{supuesto}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Chair Methodological Summary Card */}
       {resolucion?.resumen_criterio && (
         <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-blue-800/40 space-y-2.5">
           <div className="flex items-center gap-2 text-xs font-bold text-sky-300 uppercase tracking-wider">
             <BookOpen className="w-4 h-4" />
-            <span>Criterio Metodológico Oficial Aplicado</span>
+            <span>
+              {ejercicio?.catedra?.contexto || (ejercicio?.catedra?.criterios_clave && ejercicio.catedra.criterios_clave.length > 0)
+                ? 'Criterio cargado por la comunidad'
+                : 'Criterio aplicado según el material cargado'}
+            </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans">
             {resolucion.resumen_criterio}
           </p>
-          <div className="text-[11px] text-slate-400 pt-1 border-t border-blue-800/40">
-            Docente: {ejercicio.catedra?.profesor || 'Titular de Cátedra'}
-          </div>
         </div>
       )}
 
@@ -271,9 +582,9 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
 
             {resolucion.contenido_paso_a_paso && resolucion.contenido_paso_a_paso.length > 0 ? (
               <div className="space-y-3">
-                {resolucion.contenido_paso_a_paso.map((paso) => (
+                {resolucion.contenido_paso_a_paso.map((paso, idx) => (
                   <PasoAPaso
-                    key={paso.numero}
+                    key={`res-paso-${resolucion.id || 'res'}-${idx}`}
                     paso={paso}
                     totalPasos={resolucion.contenido_paso_a_paso.length}
                   />
@@ -301,6 +612,24 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
               </p>
             </div>
           )}
+
+          {/* Common Exam Mistakes Callout */}
+          {resolucion.errores_comunes && resolucion.errores_comunes.length > 0 && (
+            <div className="bg-rose-50/70 border border-rose-200 rounded-2xl p-5 shadow-xs space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-rose-900 uppercase tracking-wider">
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                <span>Errores Frecuentes a Evitar en Parciales</span>
+              </div>
+              <ul className="space-y-2 text-xs text-rose-900 leading-relaxed font-sans">
+                {resolucion.errores_comunes.map((errItem, idx) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className="font-bold text-rose-600 shrink-0 mt-0.5">⚠️</span>
+                    <span>{errItem}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       ) : (
         <div className="bg-white border-2 border-blue-200 rounded-2xl p-8 text-center space-y-5 shadow-sm">
@@ -317,25 +646,25 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
             </p>
           </div>
 
-          {solveError && (
+          {regenError && (
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 max-w-md mx-auto flex items-start gap-2 text-left">
               <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-              <span>{solveError}</span>
+              <span>{regenError}</span>
             </div>
           )}
 
-          {isSolving ? (
+          {isRegenerating ? (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl max-w-sm mx-auto space-y-2">
               <div className="flex items-center justify-center gap-2 text-blue-700 text-xs font-semibold">
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
                 <span>Resolviendo ejercicio...</span>
               </div>
-              <p className="text-[11px] text-blue-600 animate-pulse">{solvingPhase}</p>
+              <p className="text-[11px] text-blue-600 animate-pulse">{streamStatusMsg || 'Generando pasos en tiempo real...'}</p>
             </div>
           ) : (
             <button
-              onClick={handleSolveExercise}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold transition-all shadow-md hover:shadow-lg active:scale-98"
+              onClick={handleRegenerate}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold transition-all shadow-md hover:shadow-lg active:scale-98 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
               <span>Resolver con el criterio de {ejercicio.catedra?.nombre || 'la Cátedra'}</span>
@@ -357,7 +686,7 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            Tu voto confirma o ajusta el criterio académico oficial para todos los estudiantes de la materia.
+            Tu voto confirma o sugiere observaciones sobre el procedimiento para los demás estudiantes.
           </p>
           {hasVoted && (
             <div className="pt-1 flex items-center justify-center sm:justify-start gap-2 text-xs">
@@ -413,6 +742,49 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
       </div>
       )}
 
+      {/* Archived Versions History */}
+      {ejercicio.resoluciones_archivadas && ejercicio.resoluciones_archivadas.length > 0 && (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+            <History className="w-4 h-4 text-slate-500" />
+            <span>Versiones anteriores archivadas ({ejercicio.resoluciones_archivadas.length})</span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Al regenerar una resolución, se conserva el historial completo con sus votos y pasos anteriores:
+          </p>
+
+          <div className="space-y-2">
+            {ejercicio.resoluciones_archivadas.map((arch) => (
+              <div
+                key={arch.id}
+                className="p-3.5 bg-white border border-slate-200 rounded-xl text-xs space-y-1 sm:space-y-0 sm:flex sm:items-center sm:justify-between"
+              >
+                <div>
+                  <span className="font-semibold text-slate-800">
+                    Versión del {new Date(arch.fecha_generada).toLocaleDateString('es-AR')}:
+                  </span>{' '}
+                  <span className="text-slate-600 font-mono">{arch.resultado_final}</span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {arch.resumen_criterio}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] shrink-0 font-medium pt-1 sm:pt-0">
+                  <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    +{arch.votos_positivos || 0}
+                  </span>
+                  <span className="text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                    -{arch.votos_negativos || 0}
+                  </span>
+                  <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono font-semibold">
+                    Archivada
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Toast Feedback */}
       {voteFeedback && (
         <div className="p-3 bg-blue-50 text-blue-900 rounded-xl border border-blue-200 text-xs font-medium animate-in fade-in">
@@ -428,13 +800,13 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
               ¿En qué difiere con tu cátedra?
             </h4>
             <p className="text-xs text-slate-600">
-              Contanos qué regla o notación del profesor no se cumplió para enviar la resolución a revisión.
+              Contanos qué regla o notación de la cátedra no se cumplió para enviar la resolución a revisión.
             </p>
             <textarea
               rows={3}
               value={discrepancyNote}
               onChange={(e) => setDiscrepancyNote(e.target.value)}
-              placeholder="Ej: El profesor Gutiérrez exige hacer el cuadro de concavidad y no acepta este atajo..."
+              placeholder="Ej: La cátedra exige hacer el cuadro de concavidad y no acepta este atajo..."
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
             />
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -453,6 +825,88 @@ export const VerResolucion: React.FC<VerResolucionProps> = ({
                 Enviar reporte
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Modal for Exercise Report */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 relative">
+            <button
+              onClick={() => setShowReportModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold">
+                <Flag className="w-3.5 h-3.5 text-amber-600" />
+                <span>Reportar Ejercicio</span>
+              </div>
+              <h4 className="text-base font-bold text-slate-900">
+                ¿Qué problema encontraste?
+              </h4>
+            </div>
+
+            {reportSuccess ? (
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-1">
+                <Check className="w-8 h-8 text-emerald-600 mx-auto" />
+                <p className="text-xs font-bold text-emerald-950">¡Reporte registrado!</p>
+                <p className="text-[11px] text-emerald-800">
+                  El reporte fue registrado para revisión del contenido.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSendReport} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Motivo principal:
+                  </label>
+                  <select
+                    value={reportMotivo}
+                    onChange={(e) => setReportMotivo(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="Resolución errónea o imprecisa">Resolución errónea o imprecisa</option>
+                    <option value="Enunciado ilegible o incompleto">Enunciado ilegible o incompleto</option>
+                    <option value="Cátedra o materia incorrecta">Cátedra o materia incorrecta</option>
+                    <option value="Contenido inapropiado o spam">Contenido inapropiado o spam</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Detalle o aclaración (opcional):
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={reportDetalle}
+                    onChange={(e) => setReportDetalle(e.target.value)}
+                    placeholder="Ej: El resultado en la parte b no contempla la restricción del dominio..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReportModal(false)}
+                    className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingReport}
+                    className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSubmittingReport && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Enviar reporte</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

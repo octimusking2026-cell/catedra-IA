@@ -1,246 +1,302 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Usuario,
-  Facultad,
-  Materia,
-  Catedra,
-  ConsultasStatus,
-} from './types';
-import { api } from './services/api';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HelmetProvider } from 'react-helmet-async';
+import { ThemeProvider } from './context/ThemeContext';
+import { SessionProvider, useSession } from './context/SessionContext';
+import { QuotaProvider, useQuota } from './context/QuotaContext';
+import { CatalogProvider, useCatalog } from './context/CatalogContext';
 import { Navbar } from './components/Navbar';
 import { Home } from './pages/Home';
 import { SubirEjercicio } from './pages/SubirEjercicio';
 import { VerResolucion } from './pages/VerResolucion';
-import { Suscripcion } from './pages/Suscripcion';
 import { Perfil } from './pages/Perfil';
+import { AyudaPrivacidad } from './pages/AyudaPrivacidad';
 import { LimiteConsultas } from './components/LimiteConsultas';
+import { FloatingFeedback } from './components/FloatingFeedback';
+import { LoginScreen } from './components/LoginScreen';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<'feed' | 'subir' | 'resolucion' | 'suscripcion' | 'perfil'>('feed');
-  const [usuario, setUsuario] = useState<Usuario | null>(null);
-  const [consultas, setConsultas] = useState<ConsultasStatus | null>(null);
-  const [facultades, setFacultades] = useState<Facultad[]>([]);
-  const [materias, setMaterias] = useState<Materia[]>([]);
-  const [catedras, setCatedras] = useState<Catedra[]>([]);
-  const [selectedFacultad, setSelectedFacultad] = useState<Facultad | null>(null);
-  const [selectedMateria, setSelectedMateria] = useState<Materia | null>(null);
-  const [selectedCatedra, setSelectedCatedra] = useState<Catedra | null>(null);
-  const [ejercicios, setEjercicios] = useState<any[]>([]);
-  const [selectedEjercicioId, setSelectedEjercicioId] = useState<string | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [loadingInitial, setLoadingInitial] = useState(true);
+import { PoliticaPrivacidad } from './pages/PoliticaPrivacidad';
+import { TerminosCondiciones } from './pages/TerminosCondiciones';
+import { Admin } from './pages/Admin';
+import { Link } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 
-  // Load initial data
-  const loadInitialData = async () => {
-    try {
-      const [perfilRes, facs, mats, cats, ejs] = await Promise.all([
-        api.getPerfil(),
-        api.getFacultades(),
-        api.getMaterias(),
-        api.getCatedras(),
-        api.getEjercicios(),
-      ]);
+function AppContent() {
+  const { authUser, usuario, authLoading, terminosAceptados, setTerminosAceptados, refreshUser, logout } = useSession();
+  const { consultas, showLimiteModal, closeLimiteModal, refreshQuota } = useQuota();
+  const { loadingCatalog } = useCatalog();
+  const location = useLocation();
 
-      setUsuario(perfilRes.usuario);
-      setConsultas(perfilRes.consultas);
-      setFacultades(facs);
-      setMaterias(mats);
-      setCatedras(cats);
-      setEjercicios(ejs);
+  const [acceptedChecked, setAcceptedChecked] = useState(false);
+  const [acceptLoading, setAcceptLoading] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
-      if (facs.length > 0) {
-        setSelectedFacultad(facs[0]);
-        const firstMat = mats.find((m) => m.facultad_id === facs[0].id) || mats[0];
-        if (firstMat) {
-          setSelectedMateria(firstMat);
-          const firstCat = cats.find((c) => c.materia_id === firstMat.id) || cats[0];
-          if (firstCat) setSelectedCatedra(firstCat);
-        }
-      }
-    } catch (err) {
-      console.error('Error cargando datos iniciales:', err);
-    } finally {
-      setLoadingInitial(false);
-    }
-  };
-
+  // Escuchar el evento de términos pendientes de cualquier llamada API
   useEffect(() => {
-    loadInitialData();
-  }, []);
+    const handleTermsPending = () => {
+      setTerminosAceptados(false);
+    };
+    window.addEventListener('terminos-pendientes-detected', handleTermsPending);
+    return () => window.removeEventListener('terminos-pendientes-detected', handleTermsPending);
+  }, [setTerminosAceptados]);
 
-  // Refresh exercises feed
-  const refreshEjercicios = async () => {
+  const handleAcceptTerms = async () => {
+    if (!acceptedChecked) return;
+    setAcceptLoading(true);
+    setAcceptError(null);
     try {
-      const ejs = await api.getEjercicios();
-      setEjercicios(ejs);
-      const perfilRes = await api.getPerfil();
-      setUsuario(perfilRes.usuario);
-      setConsultas(perfilRes.consultas);
-    } catch (err) {
-      console.error('Error refrescando ejercicios:', err);
+      const { getCurrentUserIdToken } = await import('./services/firebase');
+      const idToken = await getCurrentUserIdToken(false);
+      const response = await fetch('/api/auth/aceptar-terminos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ version: '30/09/2026' }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'No se pudo registrar la aceptación de los términos.');
+      }
+
+      setTerminosAceptados(true);
+      await refreshUser();
+    } catch (err: any) {
+      console.error('Error al aceptar términos actualizados:', err);
+      setAcceptError(err.message || 'Error al registrar la aceptación de los términos.');
+    } finally {
+      setAcceptLoading(false);
     }
   };
 
-  // Switch between demo users (Free vs Premium)
-  const handleSwitchUser = async (userId: string) => {
+  const handleBorrarMisDatos = async () => {
+    if (!window.confirm('¿Estás seguro de que querés borrar de forma permanente todos tus datos de la base de datos? Esta acción es irreversible.')) {
+      return;
+    }
+    setAcceptLoading(true);
     try {
-      await api.switchUser(userId);
-      const perfilRes = await api.getPerfil();
-      setUsuario(perfilRes.usuario);
-      setConsultas(perfilRes.consultas);
-      refreshEjercicios();
-    } catch (err) {
-      console.error('Error al cambiar usuario:', err);
+      const { api } = await import('./services/api');
+      await api.borrarMisDatos();
+      alert('Tus datos han sido eliminados correctamente.');
+      await logout();
+    } catch (err: any) {
+      alert(err.message || 'No se pudieron borrar tus datos.');
+    } finally {
+      setAcceptLoading(false);
     }
   };
 
-  // When a new resolution is generated
-  const handleEjercicioGenerado = (ejercicioId: string) => {
-    setSelectedEjercicioId(ejercicioId);
-    setActiveTab('resolucion');
-    refreshEjercicios();
-  };
+  const isPublicPage = location.pathname === '/terminos' || location.pathname === '/privacidad';
 
-  if (loadingInitial) {
+  if (isPublicPage) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <Routes>
+            <Route path="/privacidad" element={<PoliticaPrivacidad />} />
+            <Route path="/terminos" element={<TerminosCondiciones />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    );
+  }
+
+  // Loading spinner during auth handshake
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white space-y-4">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         <div className="text-center space-y-1">
           <div className="text-xl font-bold tracking-tight">CátedraIA</div>
-          <p className="text-xs text-slate-400">Cargando cátedras universitarias y criterios de examen...</p>
+          <p className="text-xs text-slate-400">Verificando sesión universitaria...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Pantalla de bloqueo si hay sesión pero faltan términos actualizados
+  if (authUser && !terminosAceptados) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8">
+        <div className="max-w-md w-full bg-slate-800 rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              Actualizamos los Términos
+            </h2>
+            <p className="text-xs text-slate-400">
+              Para seguir utilizando CátedraIA, debés leer y aceptar la última versión de nuestros términos de servicio y política de privacidad.
+            </p>
+          </div>
+
+          {acceptError && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
+              {acceptError}
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <label className="flex items-start gap-2.5 text-xs text-slate-300 text-left cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedChecked}
+                onChange={(e) => setAcceptedChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <span>
+                Leí y acepto los{' '}
+                <a href="/terminos" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-semibold">
+                  Términos y Condiciones
+                </a>{' '}
+                y la{' '}
+                <a href="/privacidad" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-semibold">
+                  Política de Privacidad
+                </a>.
+              </span>
+            </label>
+
+            <button
+              onClick={handleAcceptTerms}
+              disabled={acceptLoading || !acceptedChecked}
+              className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+            >
+              {acceptLoading ? 'Guardando aceptación...' : 'Aceptar y continuar'}
+            </button>
+          </div>
+
+          <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs text-slate-400">
+            <button
+              onClick={() => logout()}
+              className="hover:text-white transition-colors cursor-pointer font-medium"
+            >
+              Cerrar sesión
+            </button>
+            <button
+              onClick={handleBorrarMisDatos}
+              className="text-rose-400 hover:text-rose-300 transition-colors cursor-pointer font-medium"
+            >
+              Borrar mis datos
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not logged in: Show Google Login Screen Gate
+  if (!authUser) {
+    return (
+      <LoginScreen
+        onLoginSuccess={async () => {
+          await refreshUser();
+          await refreshQuota();
+        }}
+      />
+    );
+  }
+
+  // Loading initial academic catalog
+  if (loadingCatalog) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white space-y-4">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="text-center space-y-1">
+          <div className="text-xl font-bold tracking-tight">CátedraIA</div>
+          <p className="text-xs text-slate-400">Cargando cátedras universitarias y banco de ejercicios...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      {/* Global Navbar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setActiveTab(tab as any);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        usuario={usuario}
-        consultas={consultas}
-        selectedCatedra={selectedCatedra}
-        onSwitchUser={handleSwitchUser}
-        onOpenUpgradeModal={() => setShowUpgradeModal(true)}
-      />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+      {/* Global Navbar with user profile & navigation */}
+      <Navbar />
 
-      {/* Main Content Area */}
+      {/* Main Content Area with React Router */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        {activeTab === 'feed' && (
-          <Home
-            facultades={facultades}
-            materias={materias}
-            catedras={catedras}
-            selectedFacultad={selectedFacultad}
-            setSelectedFacultad={setSelectedFacultad}
-            selectedMateria={selectedMateria}
-            setSelectedMateria={setSelectedMateria}
-            selectedCatedra={selectedCatedra}
-            setSelectedCatedra={setSelectedCatedra}
-            ejercicios={ejercicios}
-            onSelectEjercicio={(id) => {
-              setSelectedEjercicioId(id);
-              setActiveTab('resolucion');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoToSubir={() => {
-              setActiveTab('subir');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/feed" element={<Home />} />
+          <Route path="/subir" element={<SubirEjercicio />} />
+          <Route path="/ejercicio/:id" element={<VerResolucion />} />
+          <Route path="/resolucion/:id" element={<VerResolucion />} />
+          <Route path="/perfil" element={<Perfil />} />
+          <Route path="/ayuda" element={<AyudaPrivacidad />} />
+          <Route path="/privacidad" element={<PoliticaPrivacidad />} />
+          <Route path="/terminos" element={<TerminosCondiciones />} />
+          <Route
+            path="/admin"
+            element={
+              usuario?.es_admin ? <Admin /> : <Navigate to="/" replace />
+            }
           />
-        )}
-
-        {activeTab === 'subir' && (
-          <SubirEjercicio
-            catedras={catedras}
-            selectedCatedra={selectedCatedra}
-            setSelectedCatedra={setSelectedCatedra}
-            usuario={usuario}
-            consultas={consultas}
-            onEjercicioGenerado={handleEjercicioGenerado}
-            onOpenUpgradeModal={() => setShowUpgradeModal(true)}
-          />
-        )}
-
-        {activeTab === 'resolucion' && (
-          <VerResolucion
-            ejercicioId={selectedEjercicioId || ejercicios[0]?.id || ''}
-            onBack={() => {
-              setActiveTab('feed');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoToSubir={() => {
-              setActiveTab('subir');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
-        )}
-
-        {activeTab === 'suscripcion' && (
-          <Suscripcion
-            usuario={usuario}
-            consultas={consultas}
-            onPlanUpdated={() => {
-              refreshEjercicios();
-            }}
-          />
-        )}
-
-        {activeTab === 'perfil' && (
-          <Perfil
-            usuario={usuario}
-            consultas={consultas}
-            misEjercicios={ejercicios.filter((e) => e.usuario_id_subio === usuario?.id)}
-            onSelectEjercicio={(id) => {
-              setSelectedEjercicioId(id);
-              setActiveTab('resolucion');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoToUpgrade={() => {
-              setActiveTab('suscripcion');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onSwitchUser={handleSwitchUser}
-          />
-        )}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
 
-      {/* Upgrade / Limit Reached Modal */}
-      {showUpgradeModal && (
+      {/* Floating Feedback Button */}
+      <FloatingFeedback />
+
+      {/* Limit Reached Modal */}
+      {showLimiteModal && (
         <LimiteConsultas
           isModal={true}
           consultas={consultas}
-          onOpenUpgrade={() => {
-            setShowUpgradeModal(false);
-            setActiveTab('suscripcion');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          onSwitchToPremiumDemo={() => {
-            handleSwitchUser('usr_premium_demo');
-            setShowUpgradeModal(false);
-          }}
-          onClose={() => setShowUpgradeModal(false)}
+          onClose={closeLimiteModal}
         />
       )}
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-6 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-800">CátedraIA</span>
-            <span>—</span>
-            <span>Resoluciones según el criterio docente de cada cátedra universitaria</span>
-          </div>
-          <div>
-            UBA · UTN · UNLP · Modelo Freemium con Checkout de Mercado Pago
+      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-6 mt-auto transition-colors duration-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
+          <div className="space-y-1 text-center sm:text-left">
+            <p className="font-semibold text-slate-700 dark:text-slate-300">
+              © 2026 Cátedra IA. Potenciando el estudio independiente con inteligencia artificial.
+            </p>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-0.5">
+              <Link to="/privacidad" className="text-blue-600 dark:text-blue-400 hover:underline">
+                Privacidad
+              </Link>
+              <span>·</span>
+              <Link to="/terminos" className="text-blue-600 dark:text-blue-400 hover:underline">
+                Términos
+              </Link>
+              {usuario?.es_admin && (
+                <>
+                  <span>·</span>
+                  <Link to="/admin" className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium">
+                    Admin
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <HelmetProvider>
+      <ThemeProvider>
+        <BrowserRouter>
+          <SessionProvider>
+            <QuotaProvider>
+              <CatalogProvider>
+                <AppContent />
+              </CatalogProvider>
+            </QuotaProvider>
+          </SessionProvider>
+        </BrowserRouter>
+      </ThemeProvider>
+    </HelmetProvider>
   );
 }

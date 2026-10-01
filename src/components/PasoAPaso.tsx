@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PasoResolucion } from '../types';
 import { MathRenderer } from './MathRenderer';
-import { CheckCircle, AlertTriangle, BookOpen, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
+import { CheckCircle, AlertTriangle, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface PasoAPasoProps {
   paso: PasoResolucion;
@@ -68,13 +68,26 @@ export const PasoAPaso: React.FC<PasoAPasoProps> = ({ paso, totalPasos }) => {
             </div>
           )}
 
+          {/* Step Check / Sense & Unit Verification */}
+          {paso.chequeo && (
+            <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-start gap-2.5 text-xs text-emerald-950">
+              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold text-emerald-950">Chequeo de consistencia y unidades: </span>
+                <span className="text-emerald-800 leading-relaxed font-sans">
+                  {paso.chequeo}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Exam Warning / Common Mistake */}
           {paso.advertencia_examen && (
             <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-lg flex items-start gap-2.5 text-xs text-amber-900">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <span className="font-semibold text-amber-950">Atención para el Parcial: </span>
-                <span className="text-amber-800 leading-relaxed">
+                <span className="text-amber-800 leading-relaxed font-sans">
                   {paso.advertencia_examen}
                 </span>
               </div>
