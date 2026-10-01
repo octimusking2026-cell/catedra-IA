@@ -27,12 +27,29 @@ router.get('/ejercicios', authMiddleware, async (req: Request, res: Response) =>
       return true;
     });
 
+    // Cargar catálogo de referencia en memoria en una sola llamada paralela
+    const [allCatedras, allMaterias, allFacultades] = await Promise.all([
+      academicRepo.getCatedras().catch(() => []),
+      academicRepo.getMaterias().catch(() => []),
+      academicRepo.getFacultades().catch(() => []),
+    ]);
+
+    const catedrasMap = new Map(allCatedras.map((c) => [c.id, c]));
+    const materiasMap = new Map(allMaterias.map((m) => [m.id, m]));
+    const facultadesMap = new Map(allFacultades.map((f) => [f.id, f]));
+
     const enriched = await Promise.all(
       items.map(async (e) => {
-        const res = await resolucionesRepo.getByEjercicioId(e.id);
-        const cat = await academicRepo.getCatedraById(e.catedra_id);
-        const mat = cat ? await academicRepo.getMateriaById(cat.materia_id) : null;
-        const fac = mat ? await academicRepo.getFacultadById(mat.facultad_id) : null;
+        let resDoc = null;
+        try {
+          resDoc = await resolucionesRepo.getByEjercicioId(e.id);
+        } catch (resErr) {
+          console.warn(`[EjerciciosRoute] Could not fetch resolution for ${e.id}:`, resErr);
+        }
+
+        const cat = e.catedra_id ? catedrasMap.get(e.catedra_id) : null;
+        const mat = cat ? materiasMap.get(cat.materia_id) : null;
+        const fac = mat ? facultadesMap.get(mat.facultad_id) : null;
 
         const { usuario_id_subio: _omitSubio, ...resto } = e;
         const esMio = e.usuario_id_subio === userId;
@@ -41,10 +58,10 @@ router.get('/ejercicios', authMiddleware, async (req: Request, res: Response) =>
           ...resto,
           usuario_nombre: esMio ? e.usuario_nombre : undefined,
           usuario_foto: esMio ? e.usuario_foto : undefined,
-          tiene_resolucion: !!res,
-          votos_positivos: res?.votos_positivos || 0,
-          votos_negativos: res?.votos_negativos || 0,
-          estado_resolucion: res?.estado || 'sin_resolucion',
+          tiene_resolucion: !!resDoc,
+          votos_positivos: resDoc?.votos_positivos || 0,
+          votos_negativos: resDoc?.votos_negativos || 0,
+          estado_resolucion: resDoc?.estado || 'sin_resolucion',
           catedra_nombre: cat?.nombre || 'Cátedra General',
           catedra_profesor: cat?.profesor || '',
           materia_nombre: mat?.nombre || '',

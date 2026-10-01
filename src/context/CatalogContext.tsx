@@ -67,11 +67,26 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLoadingCatalog(true);
     try {
       const [cars, facs, mats, cats, ejs] = await Promise.all([
-        api.getCarreras(),
-        api.getFacultades(),
-        api.getMaterias(),
-        api.getCatedras(),
-        api.getEjercicios(),
+        api.getCarreras().catch((err) => {
+          console.warn('[CatalogContext] Error al cargar carreras:', err);
+          return [];
+        }),
+        api.getFacultades().catch((err) => {
+          console.warn('[CatalogContext] Error al cargar facultades:', err);
+          return [];
+        }),
+        api.getMaterias().catch((err) => {
+          console.warn('[CatalogContext] Error al cargar materias:', err);
+          return [];
+        }),
+        api.getCatedras().catch((err) => {
+          console.warn('[CatalogContext] Error al cargar cátedras:', err);
+          return [];
+        }),
+        api.getEjercicios().catch((err) => {
+          console.warn('[CatalogContext] Error al cargar ejercicios:', err);
+          return [];
+        }),
       ]);
 
       setCarreras(cars);
@@ -103,7 +118,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Initial materia and catedra selection
       if (initialCarrera) {
         const validMats = mats.filter(
-          (m) => !m.carreras_ids || m.carreras_ids.length === 0 || m.carreras_ids.includes(initialCarrera.id)
+          (m) => m.carreras_ids && m.carreras_ids.includes(initialCarrera.id)
         );
         const firstMat = validMats[0] || mats[0];
         if (firstMat) {

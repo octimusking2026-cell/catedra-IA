@@ -105,9 +105,7 @@ export const SubirEjercicio: React.FC = () => {
   const materiasDeCarrera = materias.filter(
     (m) =>
       !selectedCarrera ||
-      !m.carreras_ids ||
-      m.carreras_ids.length === 0 ||
-      m.carreras_ids.includes(selectedCarrera.id)
+      (m.carreras_ids && m.carreras_ids.includes(selectedCarrera.id))
   );
 
   // Filtered catedras according to selected materia

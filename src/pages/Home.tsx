@@ -55,9 +55,7 @@ export const Home: React.FC = () => {
     return materias.filter((m) => {
       const matchesCarrera =
         !selectedCarrera ||
-        !m.carreras_ids ||
-        m.carreras_ids.length === 0 ||
-        m.carreras_ids.includes(selectedCarrera.id);
+        (m.carreras_ids && m.carreras_ids.includes(selectedCarrera.id));
 
       const effectiveAnio =
         selectedCarrera && m.anio_por_carrera?.[selectedCarrera.id] !== undefined
@@ -240,6 +238,17 @@ export const Home: React.FC = () => {
                   }`}
                 >
                   2° Año
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAnio(3)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    selectedAnio === 3
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700/80'
+                  }`}
+                >
+                  3° Año
                 </button>
               </div>
             </div>

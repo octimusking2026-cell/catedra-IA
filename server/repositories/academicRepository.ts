@@ -15,25 +15,19 @@ export class FirestoreAcademicRepository implements IAcademicRepository {
     if (this.seeded) return;
 
     try {
-      const facSnapshot = await db.collection('facultades').limit(1).get();
-      if (!facSnapshot.empty) {
-        this.seeded = true;
-        return;
-      }
-
-      console.log('[AcademicRepo] Initializing Firestore with UNaM academic catalog...');
+      console.log('[AcademicRepo] Syncing UNaM academic catalog (6 carreras, años 1-3) to Firestore...');
 
       // Seed Facultades
       const batch1 = db.batch();
       for (const fac of SEED_FACULTADES) {
-        batch1.set(db.collection('facultades').doc(fac.id), fac);
+        batch1.set(db.collection('facultades').doc(fac.id), fac, { merge: true });
       }
       await batch1.commit();
 
       // Seed Carreras
       const batch2 = db.batch();
       for (const car of SEED_CARRERAS) {
-        batch2.set(db.collection('carreras').doc(car.id), car);
+        batch2.set(db.collection('carreras').doc(car.id), car, { merge: true });
       }
       await batch2.commit();
 
@@ -42,7 +36,7 @@ export class FirestoreAcademicRepository implements IAcademicRepository {
         const batch = db.batch();
         const slice = SEED_MATERIAS.slice(i, i + 400);
         for (const mat of slice) {
-          batch.set(db.collection('materias').doc(mat.id), mat);
+          batch.set(db.collection('materias').doc(mat.id), mat, { merge: true });
         }
         await batch.commit();
       }
@@ -52,13 +46,13 @@ export class FirestoreAcademicRepository implements IAcademicRepository {
         const batch = db.batch();
         const slice = SEED_CATEDRAS.slice(i, i + 400);
         for (const cat of slice) {
-          batch.set(db.collection('catedras').doc(cat.id), cat);
+          batch.set(db.collection('catedras').doc(cat.id), cat, { merge: true });
         }
         await batch.commit();
       }
 
       this.seeded = true;
-      console.log('[AcademicRepo] Successfully seeded UNaM academic catalog into Firestore.');
+      console.log('[AcademicRepo] Successfully synced UNaM academic catalog into Firestore.');
     } catch (err) {
       console.error('[AcademicRepo] Error seeding academic catalog to Firestore:', err);
     }
